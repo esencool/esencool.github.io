@@ -1,0 +1,402 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Redis | Esen</title>
+<link rel="shortcut icon" href="https://esencool.github.io//favicon.ico?v=1718774120551">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://esencool.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Redis | Esen - Atom Feed" href="https://esencool.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Redis
+存储类型
+字符串
+存在GETSET命令保障原子性的putIfAbsent
+SETNX用于加锁操作
+实用场景：缓存、锁、自增id生成器、全局计数器、限速器
+实现：SDS 简单动态字符串，相比C++自带的库更紧密
+键的自动过期，保障..." />
+    <meta name="keywords" content="技术文章" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://esencool.github.io/">
+  <img class="avatar" src="https://esencool.github.io//images/avatar.png?v=1718774120551" alt="">
+  </a>
+  <h1 class="site-title">
+    Esen
+  </h1>
+  <p class="site-description">
+    且共从容
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+        <a href="https://github.com/esencool" target="_blank">
+          <i class="ri-github-line"></i>
+        </a>
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Redis
+            </h2>
+            <div class="post-info">
+              <span>
+                2024-06-12
+              </span>
+              <span>
+                7 min read
+              </span>
+              
+                <a href="https://esencool.github.io/tag/Ab380PTf0/" class="post-tag">
+                  # 技术文章
+                </a>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="redis">Redis</h1>
+<h2 id="存储类型">存储类型</h2>
+<h3 id="字符串">字符串</h3>
+<p>存在<code>GETSET</code>命令保障原子性的putIfAbsent<br>
+<code>SETNX</code>用于加锁操作<br>
+实用场景：缓存、锁、自增id生成器、全局计数器、限速器<br>
+实现：SDS 简单动态字符串，相比C++自带的库更紧密<br>
+键的自动过期，保障服务端挂掉后锁的释放<br>
+1. 惰性删除：访问键时过期执行删除操作<br>
+2. 定期删除：周期性抽取部分键检测过期时间进行删除</p>
+<h3 id="散列hash">散列Hash</h3>
+<p>基本场景：短网址映射、图数据存储、计数器<br>
+实现：压缩列表、哈希表<br>
+资源占用更少一些，操作丰富度更小，过期时间不如字符串</p>
+<h3 id="列表-list">列表 list</h3>
+<p>基本场景： 先进先出队列、秒杀、分页、带可阻塞的消息队列</p>
+<h3 id="集合-set">集合 set</h3>
+<p>保证元素不重复<br>
+基本场景： 唯一计数器、打标签、点赞、投票、抽奖、共同关注/推荐关注<br>
+实现：整数数组、哈希表</p>
+<h3 id="有序集合-sorted_set">有序集合 sorted_set</h3>
+<p>元素不重复且有序<br>
+基本场景：排行榜、时间线、商品推荐<br>
+实现：压缩列表、跳表</p>
+<h3 id="位图-bitmap">位图 bitmap</h3>
+<p>压缩存储</p>
+<h2 id="数据结构">数据结构</h2>
+<h3 id="sds-简单动态字符串">SDS 简单动态字符串</h3>
+<ol>
+<li>struct标记为packed，不进行结构体对其，以紧凑形式存在</li>
+<li>O(1)获取字符串长度</li>
+<li>解决缓冲区溢出的问题</li>
+<li>减少修改字符串带来的内存重新分配问题，提升性能</li>
+<li>空间预先分配，惰性释放</li>
+</ol>
+<h3 id="跳表-skiplist">跳表 skipList</h3>
+<p><img src="https://esencool.github.io//post-images/1718177853986.png" alt="跳表" loading="lazy"><br>
+找到前驱-&gt; 保存 -&gt; 指针调整。随机调整层高<br>
+有理论上<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>l</mi><mi>o</mi><mi>g</mi><mi>n</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(logn)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">o</span><span class="mord mathdefault" style="margin-right:0.03588em;">g</span><span class="mord mathdefault">n</span><span class="mclose">)</span></span></span></span>的查询速度。由于数据都在内存中，效果比叶子节点庞大的B+树效果好<br>
+<strong>与B+树的差异：</strong></p>
+<ol>
+<li>结构差异：B+ 树是一种多路搜索树，每个节点可以有多个子节点，而跳表是一种基于链表的数据结构，每个节点只有一个下一个节点，但可以有多个快速通道指向后面的节点。</li>
+<li>空间利用率：B+ 树的磁盘读写操作是以页（通常是 4KB）为单位的，每个节点存储多个键值对，可以更好地利用磁盘空间，减少 I/O 操作。而跳表的空间利用率相对较低。</li>
+<li>插入和删除操作：跳表的插入和删除操作相对简单，时间复杂度为 O(logN)，并且不需要像 B+ 树那样进行复杂的节点分裂和合并操作。</li>
+<li>范围查询：B+ 树的所有叶子节点形成了一个有序链表，因此非常适合进行范围查询。而跳表虽然也可以进行范围查询，但效率相对较低。</li>
+</ol>
+<p>因此，B+ 树和跳表不能简单地相互替换。在需要大量进行磁盘 I/O 操作和范围查询的场景（如数据库索引）中，B+ 树可能是更好的选择。而在主要进行内存操作，且需要频繁进行插入和删除操作的场景（如 Redis）中，跳表可能更有优势。<br>
+Redis 的 ZSet 为什么使用跳表而不是B+树</p>
+<p>Redis 是内存存储，不存在 IO 的瓶颈，所以跳表的层数的耗时可以忽略不计，而且插入数据时不需要开销以平衡数据结构（写多）。</p>
+<h3 id="ziplist">zipList</h3>
+<p>可参考：https://juejin.cn/post/6914456200650162189<br>
+当元素较少时使用。</p>
+<h3 id="zset">zset</h3>
+<p>可参考：https://juejin.cn/post/7009942104176590884<br>
+等价于java的TresSet + hashMap</p>
+<h3 id="哈希">哈希</h3>
+<p>主要解决了扩容下rehash的问题：</p>
+<h2 id="附加功能">附加功能</h2>
+<h3 id="渐进式rehash">渐进式rehash</h3>
+<ul>
+<li>为ht[1]分配空间，让字典同时持有ht[0]和ht[1]两个哈希表</li>
+<li>维持索引计数器变量rehashidx，并将它的值设置为0，表示rehash开始</li>
+<li>每次对字典执行增删改查时，将ht[0]的rehashidx索引上的所有键值对rehash到ht[1]，将rehashidx值+1。</li>
+<li>当ht[0]的所有键值对都被rehash到ht[1]中，程序将rehashidx的值设置为-1，表示rehash操作完成</li>
+</ul>
+<h3 id="数据库管理">数据库管理</h3>
+<ol>
+<li>keys 会拿出所有key，有内存风险</li>
+</ol>
+<h3 id="流水线与事务">流水线与事务</h3>
+<ol>
+<li>客户端pipline()方法</li>
+<li>不支持回滚，不具备ACI，有条件的D</li>
+<li>发布订阅 websocket的横向拓展</li>
+<li>lua脚本，会作为原子执行，解决轻量级事务</li>
+<li>持久化</li>
+</ol>
+<h2 id="持久化">持久化</h2>
+<h3 id="rdb快照内存快照">RDB快照（内存快照）</h3>
+<ol>
+<li>对全量数据做快照<br>
+<code>SAVE</code>在主线程执行,<code>BGSAVE</code>异步执行</li>
+<li>能否同步做修改？<br>
+可以，写时复制实现。</li>
+<li>为了保障数据不丢失，会比较频繁的使用<code>BGSAVE</code>，这会导致内存压力较大</li>
+</ol>
+<h3 id="aof-日志">AOF 日志</h3>
+<p>AOF 增量日志，将日志缓冲文件根据策略写回磁盘<br>
+写回磁盘时会阻塞主线程<br>
+always策略：实时写回<br>
+everysec：每秒写回<br>
+no：操作系统选择写回</p>
+<h2 id="高可用">高可用</h2>
+<h3 id="主从复制">主从复制</h3>
+<p><img src="https://esencool.github.io//post-images/1718174203746.png" alt="主从复制" loading="lazy"><br>
+一主一从，一主多从适合读多写少的常见，避免慢查询对主节点的阻塞。</p>
+<h4 id="操作逻辑">操作逻辑</h4>
+<pre><code>读可以读主库和从库
+写操作只操作主库
+1. 初次链接全量同步
+主库不阻塞，从库从零初始化数据
+2. 增量同步
+维护长链接，不断的将数据发送至从服务器
+3. 断连场景
+2.8 之前如果发生了断链回全量同步
+2.8 后使用FIFO队列同步更新，记录更新的offset，将间隔内的offset进行同步
+</code></pre>
+<h4 id="缺点">缺点</h4>
+<ol>
+<li>主节点挂掉后需要手动切换从节点</li>
+<li>储存容量收到带宽限制</li>
+<li>异步写入无法保证强一致</li>
+</ol>
+<h3 id="哨兵机制">哨兵机制</h3>
+<figure data-type="image" tabindex="1"><img src="https://esencool.github.io//post-images/1718174506777.png" alt="哨兵机制" loading="lazy"></figure>
+<h4 id="监控">监控</h4>
+<p>向从库发送ping命令，判断是否需要下线<br>
+单个哨兵节点判断为主观下线，多个哨兵节点投票确定为客观下线</p>
+<h4 id="选主">选主</h4>
+<p>筛选-打分</p>
+<h3 id="redis-cluster-架构">Redis Cluster 架构</h3>
+<p>采用无中心架构，每个节点保存数据和整个集群的状态，每个节点都与其他节点连接。<br>
+按照规则对数据进行分片，分别存储在不同的主节点上，每个主节点有从节点备份。</p>
+<h2 id="应用与实践">应用与实践</h2>
+<h3 id="缓存雪崩">缓存雪崩</h3>
+<ol>
+<li>什么是缓存雪崩<br>
+缓存中有大量数据同时命中
+<ol>
+<li>过期时间加一个随机的值，避免同时失效</li>
+<li>合适的限流</li>
+<li>提前预热，提前续租</li>
+</ol>
+</li>
+<li>缓存击穿<br>
+热点key过期<br>
+提前续期</li>
+<li>缓存穿透<br>
+业务误操作，恶意攻击
+<ol>
+<li>保存空值或缺省值</li>
+<li>过滤器判断数据是否存在</li>
+<li>在请求入口做完备检测</li>
+</ol>
+</li>
+</ol>
+<h2 id="缓存规范">缓存规范</h2>
+<ol>
+<li>命名：可读性，可管理性</li>
+<li>合适的数据结构&amp;避免大key（value大）：删除&amp;自动过期时会导致阻塞，带宽限制
+<ol>
+<li>只储存有需要的字段</li>
+<li>使用压缩算法</li>
+<li>拆分key</li>
+<li>有限次重试</li>
+</ol>
+</li>
+<li></li>
+<li>控制key的生命周期</li>
+<li>关注<code>O(n)</code>的命令</li>
+<li>缓存的预热</li>
+</ol>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#redis">Redis</a>
+<ul>
+<li><a href="#%E5%AD%98%E5%82%A8%E7%B1%BB%E5%9E%8B">存储类型</a>
+<ul>
+<li><a href="#%E5%AD%97%E7%AC%A6%E4%B8%B2">字符串</a></li>
+<li><a href="#%E6%95%A3%E5%88%97hash">散列Hash</a></li>
+<li><a href="#%E5%88%97%E8%A1%A8-list">列表 list</a></li>
+<li><a href="#%E9%9B%86%E5%90%88-set">集合 set</a></li>
+<li><a href="#%E6%9C%89%E5%BA%8F%E9%9B%86%E5%90%88-sorted_set">有序集合 sorted_set</a></li>
+<li><a href="#%E4%BD%8D%E5%9B%BE-bitmap">位图 bitmap</a></li>
+</ul>
+</li>
+<li><a href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84">数据结构</a>
+<ul>
+<li><a href="#sds-%E7%AE%80%E5%8D%95%E5%8A%A8%E6%80%81%E5%AD%97%E7%AC%A6%E4%B8%B2">SDS 简单动态字符串</a></li>
+<li><a href="#%E8%B7%B3%E8%A1%A8-skiplist">跳表 skipList</a></li>
+<li><a href="#ziplist">zipList</a></li>
+<li><a href="#zset">zset</a></li>
+<li><a href="#%E5%93%88%E5%B8%8C">哈希</a></li>
+</ul>
+</li>
+<li><a href="#%E9%99%84%E5%8A%A0%E5%8A%9F%E8%83%BD">附加功能</a>
+<ul>
+<li><a href="#%E6%B8%90%E8%BF%9B%E5%BC%8Frehash">渐进式rehash</a></li>
+<li><a href="#%E6%95%B0%E6%8D%AE%E5%BA%93%E7%AE%A1%E7%90%86">数据库管理</a></li>
+<li><a href="#%E6%B5%81%E6%B0%B4%E7%BA%BF%E4%B8%8E%E4%BA%8B%E5%8A%A1">流水线与事务</a></li>
+</ul>
+</li>
+<li><a href="#%E6%8C%81%E4%B9%85%E5%8C%96">持久化</a>
+<ul>
+<li><a href="#rdb%E5%BF%AB%E7%85%A7%E5%86%85%E5%AD%98%E5%BF%AB%E7%85%A7">RDB快照（内存快照）</a></li>
+<li><a href="#aof-%E6%97%A5%E5%BF%97">AOF 日志</a></li>
+</ul>
+</li>
+<li><a href="#%E9%AB%98%E5%8F%AF%E7%94%A8">高可用</a>
+<ul>
+<li><a href="#%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6">主从复制</a>
+<ul>
+<li><a href="#%E6%93%8D%E4%BD%9C%E9%80%BB%E8%BE%91">操作逻辑</a></li>
+<li><a href="#%E7%BC%BA%E7%82%B9">缺点</a></li>
+</ul>
+</li>
+<li><a href="#%E5%93%A8%E5%85%B5%E6%9C%BA%E5%88%B6">哨兵机制</a>
+<ul>
+<li><a href="#%E7%9B%91%E6%8E%A7">监控</a></li>
+<li><a href="#%E9%80%89%E4%B8%BB">选主</a></li>
+</ul>
+</li>
+<li><a href="#redis-cluster-%E6%9E%B6%E6%9E%84">Redis Cluster 架构</a></li>
+</ul>
+</li>
+<li><a href="#%E5%BA%94%E7%94%A8%E4%B8%8E%E5%AE%9E%E8%B7%B5">应用与实践</a>
+<ul>
+<li><a href="#%E7%BC%93%E5%AD%98%E9%9B%AA%E5%B4%A9">缓存雪崩</a></li>
+</ul>
+</li>
+<li><a href="#%E7%BC%93%E5%AD%98%E8%A7%84%E8%8C%83">缓存规范</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://esencool.github.io/post/huan-cun-suan-fa/">
+              <h3 class="post-title">
+                caffine
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://esencool.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

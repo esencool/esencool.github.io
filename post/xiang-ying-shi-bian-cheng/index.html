@@ -1,0 +1,522 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>响应式编程 | Esen</title>
+<link rel="shortcut icon" href="https://esencool.github.io//favicon.ico?v=1718774120551">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://esencool.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="响应式编程 | Esen - Atom Feed" href="https://esencool.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="官方文档Reactor 3 Reference Guide
+练习代码地址：https://github.com/esencool/reactive-programming-demo
+引言
+在这里讲一下做这次分享的源头：
+
+在之前有同学做过关..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://esencool.github.io/">
+  <img class="avatar" src="https://esencool.github.io//images/avatar.png?v=1718774120551" alt="">
+  </a>
+  <h1 class="site-title">
+    Esen
+  </h1>
+  <p class="site-description">
+    且共从容
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+        <a href="https://github.com/esencool" target="_blank">
+          <i class="ri-github-line"></i>
+        </a>
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              响应式编程
+            </h2>
+            <div class="post-info">
+              <span>
+                2024-06-19
+              </span>
+              <span>
+                20 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>官方文档<a href="https://projectreactor.io/docs/core/release/reference/">Reactor 3 Reference Guide</a><br>
+练习代码地址：https://github.com/esencool/reactive-programming-demo</p>
+<h1 id="引言">引言</h1>
+<p>在这里讲一下做这次分享的源头：</p>
+<ol>
+<li>在之前有同学做过关于netty网络框架的分享，其中提到了NIO和reactor模型。</li>
+</ol>
+<p>但在目前的实际业务开发中，我们并没有使用到这些特性，接口仍然是串行调用的。<br>
+从语言的角度看，实现非阻塞交互并不是一件非常困难的事情，JavaScript就实现了单线程非阻塞式的异步。<br>
+本文所提及的响应式编程，即为一种实现非阻塞的编程范式，它可以是单线程的，也可以是多线程的。</p>
+<ol>
+<li>响应式编程目前作为一门「比较新」的技术，不会出现内容老生常谈而感到无聊。</li>
+<li>响应式编程已经在spring5中被引入，离我们并不「远」。也许x年之后就会像java8一样被广泛地使用。</li>
+</ol>
+<p>First of all：</p>
+<ol>
+<li>本文从实践入手，响应式框架的底层原理依赖对应网络框架（netty，tomcat等），以web最常用的webFlux为例。</li>
+<li>我对响应式编程的理解也比较浅薄，如有疏漏欢迎指教。</li>
+</ol>
+<h1 id="背景">背景</h1>
+<p>在进行业务开发的时候，我们会发现一个接口会去做很多IO高的操作是非常常见的，诸如操作数据库，查询其他服务接口，与其他中间件交互等。一部分性能瓶颈的场景也多见于频繁IO。<br>
+这里举一个简单的例子：我们的服务需要去查询其他两个服务的数据（或者从数据库中查询两次数据）然后做聚合，然后组装这两个参数返回给前端。如下图所示。<br>
+[图片]<br>
+我们会发现接口的时间很大一部分用在了等待2，4两跳的返回，接口的性能主要限制在此。<br>
+为什么即使使用了支持NIO的网络框架，例如netty，tomcat，为什么我们没有使用到NIO的网络特性呢？</p>
+<ol>
+<li>对于网络IO，这是由于我们经常使用的RestTemplate是一个同步方式执行请求的类。</li>
+</ol>
+<p>RestTemplate源自Spring3，使用简单开发高效，被广泛使用。<br>
+在发现同步请求并不是最优解的时候，Spring4中引入了AsyncRestTemplate，不过完善程度不高且使用起来很复杂，被标记为duplicate，且在后续版本中被移除。<br>
+本文的主角WebClient自spring5.0被引入，是非阻塞&amp;响应式的执行http请求的实现。</p>
+<ol>
+<li>对于数据库的执行，我们常用的JDBC版本也是同步方式进行请求。</li>
+</ol>
+<p>同步意味着简单，可以从业人员不需要具有很高的技术水平就可以写出实现功能的代码。<br>
+但当对于Tob业务来说，与上下游交互的业务逻辑变得复杂，同步方式很快就会触及性能瓶颈，我们相当一部分慢接口的原因就是网络调用时间比较长。<br>
+很容易发现，在进行IO的过程中，CPU往往在“偷懒”，它并没有被高效的利用，而只是静静的等待IO的返回。</p>
+<h1 id="为什么需要响应式编程">为什么需要响应式编程？</h1>
+<p>在学习一项东西的时候，我们往往要问两个问题。</p>
+<ol>
+<li>什么是响应式编程？</li>
+<li>响应式编程有哪些优点？（为什么要响应式编程？）</li>
+</ol>
+<p>这些问题我们先给一个笼统的回答——其中具体的精髓可以从</p>
+<ol>
+<li>响应式编程是一种编程范式</li>
+<li>用于实现非阻塞IO编程。</li>
+</ol>
+<p>接下来，我给出一个demo，带大家有一个初步理解。这里使用spring web框架中最流行的webClient作为例子。<br>
+举个例子，我们需要实现如下接口逻辑</p>
+<ol>
+<li>需要去用户信息服务查询基本信息</li>
+<li>需要去用户关注服务查询用户关注列表</li>
+<li>组合两者结果，返回给前端</li>
+</ol>
+<p>假设两个查询接口均需要2s才能返回数据。<br>
+这里是DemoController中服务提供方的实现，我们省略细节（对应的repository为固定结果），控制接口响应时间<br>
+[图片]</p>
+<h2 id="blocking-is-wasteful">Blocking is Wasteful</h2>
+<p>大家在写Spring Boot 程序时，通常还使用着早期的方式——阻塞代码来编写程序。<br>
+目前的服务器硬件性能不断提高，但软件的性能仍然是一个问题。<br>
+更差的在于阻塞会带来资源浪费，特别是我们目前的应用模式，经常CPU负载并不高，但是IO时间较长，让线程进入空闲状态等待数据返回，整个服务的吞吐量不高。<br>
+我们有必要高效利用硬件的能力，避免资源浪费。<br>
+如下是使用同步方式编写的代码，基于restTemplate<br>
+[图片]<br>
+以上代码中，restTemplateClient 即底层为restTemplate的同步请求<br>
+我们调用接口的所需时间是4s多一点<br>
+这里不做过多解释<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907615-5e657149-1903-41f8-b99a-cd76f452da26.png#averageHue=%23fbfbfb&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u438cd3fe&amp;originHeight=520&amp;originWidth=790&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=uf759edce-2e90-4802-bde4-604045bff87&amp;title=" alt="" loading="lazy"><br>
+注：如果没有进行特殊处理的话，第一次请求会比较慢，我们可以多运行几次观察理想结果。这是由于<br>
+JVM 需要经过解释执行 (interpreter) 找到热点，然后通过 JIT 编译器来加速热点方法的运行。应用启动之后会有很长的时间处于寻找热点，编译热点的状态，这时很多性能指标 (CPU 使用率, TPS 吞吐量, RT 响应时间)是不理想的。当 Java 应用启动并提供服务之后，在一定时间内，处于一种 Warmup 的状态。</p>
+<hr>
+<h2 id="异步实现非阻塞">异步实现非阻塞</h2>
+<p>Javaers大多使用异步并行的方式来提高程序的性能。但是这种方式并不是完全的灵丹妙药，在功能不断堆叠，访问量增加的情况下，会引入一些问题。<br>
+在JVM上实现异步代码，java提供了两种异步编程方式：</p>
+<h3 id="callback回调">callback回调：</h3>
+<p>不含有返回值，但是新增一个callback参数，当结果可用时调用callback.<br>
+<strong>缺点（致命缺点）</strong>：当业务逻辑变得复杂，很容易形成回调地狱Callback Hell。这也是前面提到的spring4中引入的AsyncRestTemplate被弃用的原因。<br>
+我对回调的方式实现异步的代码写的比较少，不过可以尝试猜测回调地狱的主要原因</p>
+<ol>
+<li>代码可读性不强，代码顺序不意味着时序逻辑，维护成本较高。</li>
+<li>仍需要在某一处用代码显式等待异步callback执行完成，等待时机不好把握且代码不优雅。</li>
+<li>完善的工具类/模板代码较少，编码复杂。</li>
+</ol>
+<h3 id="future">Future</h3>
+<p>返回一个Future<T>，Future包装了对返回结果T的访问，返回的Future并不立即可用，还是需要轮询或其他方式来阻塞获取返回结果T<br>
+我们以最流行且相对好用且是JDK中提供的CompletableFuture来举例，对于上方代码的优化需要写成如下形式：<br>
+[图片]<br>
+我们可以看到，即使如此，还是有一些缺点：</p>
+<ol>
+<li>提交任务和等待收集结果是有小量的开销的。</li>
+<li>线程池的配置令人烦躁，诸多参数如何设置很容易陷入纠结，需要考虑很多因素，甚至需要随着业务发展跟随变化。</li>
+<li>try-catch来等待所有请求完成的写法看起来并不优雅。</li>
+<li>对于每个Runnable可能发生的异常进行处理会造成代码编写比较复杂。
+<ol>
+<li>如果想忽略某个Runnable的异常，那么需要在12行捕获对应特定的异常并忽略，或者重新用try-catch封装对应Runnable方法。</li>
+<li>如果某个Runnable出现异常，此时想阻断整个流程，但抛出业务异常（而非并发异常），需要捕获并重新抛出。</li>
+</ol>
+</li>
+<li>复杂的编码。
+<ol>
+<li>将请求并发，相对于简单同步的方式要多写很多代码。
+<ol>
+<li>上述写法使用了具有副作用的Runnable，如果想移除这些副作用，需要预先声明方法的返回值，这会让这些变量的声明距离变量的使用间隔较远，且当需要异步的Runnable变多，代码可读性会降低。</li>
+<li>如果有更复杂的异步流程或需指定线程池，代码都会更加复杂，</li>
+</ol>
+</li>
+<li>为了忽略异常，往往要重新用try-catch封装已实现的方法</li>
+<li>如果有复杂的并发流程，虽然已经提供了thenApplyAsync等方法，但实现起来会非常复杂。</li>
+</ol>
+</li>
+</ol>
+<p>让我们运行一下Future方式实现的并发编程，看一下我们的优化程度如何。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907650-d61e6c6b-15cb-4e6a-8f8c-9c57b86dddeb.png#averageHue=%23252c2f&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u2078ad80&amp;originHeight=268&amp;originWidth=1668&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u01857d14-68fb-410d-ab3e-48ad8669771&amp;title=" alt="" loading="lazy"><br>
+通过观察日志，可以看到两个接口的调用请求确实进入并行了，分别为onPool-worker-1和onPool-worker-2。<br>
+最终的运行结果为2.03s左右<br>
+类似木桶效应，并发可以让接口的响应时长接近于最长的接口返回时间。这里比较容易理解。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907624-96330e7c-afb1-4a9e-b5ce-a17526f4f239.png#averageHue=%23fbfbfb&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u553233e0&amp;originHeight=576&amp;originWidth=798&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u37700955-9811-48cc-8789-ceb450cc706&amp;title=" alt="" loading="lazy"></p>
+<hr>
+<h1 id="响应式编程实现非阻塞">响应式编程实现非阻塞</h1>
+<h2 id="前置知识">前置知识</h2>
+<p>在讲解响应式编程之前，需要大家了解一些基础，不然看代码会有所迷惑。<br>
+这也是响应式编程的缺点：学习曲线比较陡峭<br>
+响应式编程需要函数式编程，lamba表达式作为基础，如果对这两者理解过浅，直接入门响应式编程会很困难。<br>
+另一方面，为了实现更简单的编码，较多的api也带来了更高的学习成本。这意味着你想写出很酷的代码，需要熟练掌握较多的api。<br>
+下面将响应式编程所基于webflux的Mono和Flux与java8中的Optional和Stream相对比，方便大家快速入门。<br>
+默认大家很熟悉Optional和Stream，重点放在Mono与Flux</p>
+<h2 id="why-mono-flux">Why Mono &amp; Flux</h2>
+<p>需要引入新的实现来实现响应式的特点。<br>
+Web Flux即为一种响应式编程的实现，其中对于业务开发人员编写响应式代码来说，主要接触的是Publisher接口，因为Subscriber接口已经由web flux框架实现。<br>
+其中Mono 和Flux便是两个Publisher接口的实现类。<br>
+Mono针对单个元素，Flux针对集合。</p>
+<hr>
+<h2 id="mono-vs-optional">Mono vs Optional</h2>
+<h3 id="optional">Optional</h3>
+<p>Optional<T>是一个用来表达一个对象 T 可能为空的方式。它的主要用途为</p>
+<ol>
+<li>避免空指针。在使用方拿到Optioinal的情况下必须要进行判空处理</li>
+<li>函数式编程。提供了map，filter方法，可以将T编排到方法所组成的链式流水线上</li>
+</ol>
+<h3 id="mono">Mono</h3>
+<p>在响应式编程中Mono<T> 用来表达可以产生一个T的发布者(publisher)，但并不要求必须是非阻塞的。<br>
+更加详细的说明书：<a href="https://projectreactor.io/docs/core/release/reference/#which.create">相关API</a></p>
+<h4 id="声明">声明</h4>
+<p>这里举几个例子<br>
+[图片]</p>
+<h4 id="使用">使用</h4>
+<p>相比于贫瘠的Optional的消费函数，可以消费Mono的方式有非常多<br>
+[图片]</p>
+<h4 id="声明消费时响应式代码才会被执行">声明消费时响应式代码才会被执行</h4>
+<p>这里和Stream有一些类似，<strong>只有在声明了终止操作时</strong>，Mono才会被消费。<br>
+<strong>这是非常合理的</strong>，声明时就消费会带来更高的编写代码成本——我们通常都是声明好流水线的顺序，最后才执行代码。一旦声明代码就开始执行，就会过于依赖代码的书写顺序，这会使代码异常难以维护。<br>
+在webFlux框架下，声明接口只需要返回Mono或者Flux即可，框架会处理对应生产者的消费。<br>
+消费的简单用法即为subscribe 和subscribeOn，后者可以指定在哪个线程中执行，这在后面的例子中会详细说明。<br>
+同时，Mono也提供了toFuture的方法，可以直接获得一个对应的CompletableFuture，方便与历史代码配合。</p>
+<hr>
+<h2 id="flux-vs-stream">Flux vs Stream</h2>
+<p>类似的，Flux<T>表示<strong>可以提供一系列T的发布者</strong>。<br>
+这往往有着一个误区，很多人误认为Flux和Stream的区别和用法也是类似的，是用于处理集合的类，这是一个错误观念。Flux固然有着处理集合的能力，但集合的处理仍推荐使用Stream或其拓展版StreamEx。<br>
+<strong>Flux是用来处理多个发布者的类</strong>，这里Mono可类比为每个需要执行的任务，Flux类比为管理相同类型任务集合的类。<br>
+具体提供的api可见，复杂的任务流程可以通过这些api用更简单高效的编码方式书写出来。<br>
+[图片]<br>
+接下来，让我们使用一个响应式编程来解决上面的问题。</p>
+<hr>
+<h2 id="响应式实现一个接口调用">响应式实现一个接口调用</h2>
+<p>这里是一个响应式获得Mono<UserBasicInfo>和Mono<UserFavorite>的client例子。<br>
+其中WebClient是springFlux中提供的标准的响应式Client<br>
+使用bodyToMono方法来获得对应的类型返回值。<br>
+另外，构造器模式实现的响应式请求调用相对于RestTemplate的多参数同步调用实现的更加工整优雅。<br>
+[图片]</p>
+<h2 id="响应式的问题解决方案">响应式的问题解决方案</h2>
+<p>[图片]<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907608-e6d217f6-7336-4c59-bb54-116a765d4253.png#averageHue=%23252c2f&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u61167584&amp;originHeight=526&amp;originWidth=1654&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ue7dd8bea-f802-4219-9dd4-c6fa1c1d14b&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907722-dd7ebbcf-4aaf-4913-82e6-74ef38c7d2a2.png#averageHue=%23fafafa&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u8bb9d773&amp;originHeight=590&amp;originWidth=806&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u3ff69da4-6a22-4581-ae7f-dcddc28ed1b&amp;title=" alt="" loading="lazy"><br>
+响应时间为2.02s<br>
+可以看到，我们实现了相同的结果，也可以发现响应式编程的优点：</p>
+<ol>
+<li>只使用了一个线程ctor-http-nio-3</li>
+<li>响应时间相比并行无明显差距</li>
+<li>和同步代码几乎完全相同的行数，代码非常简洁优美。</li>
+</ol>
+<p>从这里可以看出，由响应式编程实现的非阻塞，相比于异步并行，有如下优点：</p>
+<ol>
+<li>响应式实现非阻塞，不需要额外业务线程。
+<ol>
+<li>计算资源高效利用，减少了线程调度的时间，CPU真正处理业务逻辑的时间占比更高</li>
+<li>不需要对线程池的配置进行考虑，即使容器规格，业务规模发生变化，代码不需要改造</li>
+</ol>
+</li>
+<li>性能不明显劣于异步并行。</li>
+<li>响应式编程的可读性更好。</li>
+</ol>
+<h2 id="响应式编程对同步方法起效吗">响应式编程对同步方法起效吗？</h2>
+<p>举一个形象的例子，我们需要去不同餐馆吃饭。<br>
+对于同步编程来说，就像是我们在食堂一样，需要自己带着餐盘排队，排队完成才能拿到饭，想拿不同餐线的饭需要排多次队伍，吃两个餐线的饭的时间显然是两者之和。<br>
+对于响应式编程来说，就像是我们扫码点餐，当餐做好的时候服务员会通知你取餐，这样我们可以省去排队的时间，对于这种情况，时间只受限于最长的取餐时间。</p>
+<h3 id="响应式发布者协同同步发布者">响应式发布者协同同步发布者</h3>
+<p>对于下方代码，像这样zip了一个同步请求Mono.<em>fromCallable</em>(()-&gt;restTemplateService.getUserFavorites(userId)))和一个响应式请求webClientService.getUserInfo，会发现接口也只需要2s就能执行完。<br>
+[图片]<br>
+这时就像上面的比喻一样，根据贪婪算法很容易想到一个最优解——<br>
+我们先把能够扫码下单的菜单完成点餐，然后去排队就餐，排队结束后取扫码下单的菜。</p>
+<ol>
+<li>先让响应式请求发出（即使先声明同步请求）</li>
+<li>执行同步请求</li>
+<li>处理同步请求的结果（即使同步请求的获取结果时间更慢）</li>
+<li>最后获取响应式请求的结果，并进行处理</li>
+</ol>
+<h3 id="完全同步发布者">完全同步发布者</h3>
+<p>根据上文的分析可知，我们不存在可以预先发出的响应式请求，所有的同步请求只能在线程中依次执行，就如同没有使用响应式编程一样。这里就不再贴例子了。</p>
+<hr>
+<h2 id="那我的同步项目怎么办呢">那我的同步项目怎么办呢？</h2>
+<h3 id="响应式实现并发编程">响应式实现并发编程</h3>
+<p>事实上对应的开发者也考虑到了这种情况，即使我们的接口都是同步的，引入webflux也会有对应的好处——响应式编程也提供了高效，优雅，简洁的并发设计。<br>
+因为虽然开发者们提供了webclient，jdbc等常用的IO操作的响应式实现，但毕竟不是所有的操作都是响应式的，如果一旦回到同步世界就会导致优化失败，那组件的引入便无意义了。<br>
+接下来，给大家一个使用webflux高效实现并发编程的例子。<br>
+[图片]<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908314-ca260838-4125-4635-b383-0b37cbb7faf3.png#averageHue=%23262c2f&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u0a24df91&amp;originHeight=268&amp;originWidth=1660&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=uf137673a-c709-4d3e-9d6b-1ee7021257d&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908245-5f168f0b-0bb3-4cec-9f1e-47870aa79738.png#averageHue=%23fafafa&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u1afb11ef&amp;originHeight=594&amp;originWidth=816&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u0a3f9768-4c1b-4ba4-8cb3-8f19656ef68&amp;title=" alt="" loading="lazy"><br>
+可以看到，我们用很简单的方式实现了</p>
+<ol>
+<li>使用了两个线程oundedElastic-1，pool-4-thread-1并发加载</li>
+<li>总耗时为2.04s，实现了与CompletableFuture相近的并发结果。</li>
+<li>代码行数不多，而且非常优雅
+<ol>
+<li>第7行使用fromCallable方法创造了一个同步的生产者Mono<UserBasicInfo></li>
+<li>第9行指定了线程池。我们可以非常简单的制定自己想设置的线程池。这时Mono<UserBasicInfo>变成了可以异步获得的。</li>
+<li>第11行指定了获取Mono时失败的时候的返回值</li>
+<li>第14行指定了发生异常时需要对异常做如何消费并兜底</li>
+</ol>
+</li>
+</ol>
+<p>zip方法提供了横向组合多个生产者的功能，配合doOnNext可以优雅&amp;高效的构造出一个复杂的pipeline。</p>
+<h2 id="响应式编程的高阶用法">响应式编程的高阶用法</h2>
+<h3 id="如何短路">如何短路？</h3>
+<p>这里我们创造一个更复杂一点的场景——实现fail-fast/短路</p>
+<ol>
+<li>查询基本信息接口响应时间变为1s，查询兴趣列表响应时间不变，仍为2s</li>
+</ol>
+<p>这里举个例子，在实际编码过程中，我们并不会因为接口的相应时间不同，而采取不同的编码策略。</p>
+<ol>
+<li>需要对返回值进行校验，如果任一校验为true，则可以直接返回结果，即判断过程可被短路。</li>
+</ol>
+<p>假如我们用当前常用的CompletableFuture来实现，大家通常会像并发例子中那样并发执行两个接口，获取返回值进行判断，这样实现的接口耗时为2s左右。<br>
+对于实现fail-fast来说，使用CompletableFuture的编码复杂度过于高了，但交给webflux，这仍不是一个难题。<br>
+[图片]<br>
+可以看到，即使我们将执行时间较长的查询兴趣列表的任务声明在前（事实上也是先执行的），但是仍然可以在更快的接口拿到返回值时直接完成整个接口。any方法可以实现多个生产者的短路。<br>
+当我们将执行较短的方法声明在前，执行结果如下（事实上也是先执行的）<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908214-7e45ce62-13f1-4efc-8242-1a82bbe3ee2e.png#averageHue=%23312f2e&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u954bbe1f&amp;originHeight=91&amp;originWidth=820&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u0d114082-2ca7-43b4-9fe6-93e5e1a4b4c&amp;title=" alt="" loading="lazy"><br>
+可以发现在书写代码时，并不需要考虑两个接口谁的性能更好<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908448-aa21cb4f-c8b7-48c6-95ab-23989ee4683f.png#averageHue=%23312f2e&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=ub5f713a6&amp;originHeight=87&amp;originWidth=810&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u41efda58-f20c-4f3d-90a0-b4b43fab59a&amp;title=" alt="" loading="lazy"><br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908379-11599e9e-5244-4074-98ac-d07558dd3ed0.png#averageHue=%232d2c2b&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u4449a484&amp;originHeight=249&amp;originWidth=518&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u87866d73-9522-408e-8b44-f208558eebf&amp;title=" alt="" loading="lazy"></p>
+<hr>
+<p>webflux拥有非常多的api，组合这些可以实现诸多复杂场景，这里不做过多举例，大家感兴趣可以自行了解。<br>
+接下来带大家了解其中比较重要的概念——hot vs cold<br>
+更多的官方资料可见<a href="https://projectreactor.io/docs/core/release/reference/#advanced">点击跳转</a>。</p>
+<h3 id="可消费次数">可消费次数</h3>
+<p>Stream只能被消费一次，但Flux可以是热的，也可以是冷的<br>
+这里我曾经疑惑，为什么对于返回单个对象的时候用Optional包裹是好的实现，而返回集合对象的时候不用Stream来代替呢？<br>
+实际上Stream只会被消费一次的特点某种意义上解答了这个问题，如果返回的是stream，那么我们必须立刻消费它，不然一旦被其他地方重复消费就会产生bug。<br>
+而Mono和Flux，既可以是hot的，也可以是cold。<br>
+这里是官方提供的概念，所谓的hot，即每次消费都会让发布者重新执行生产动作。cold，即每次消费发布者只会生产一次。<br>
+发布者的冷与热是可以相互转换的。默认是hot的，但是可以通过defer方法转换为冷的，反之，可以通过share方法转换为热的。<br>
+这个特点可以解决我们编写代码时需要考虑外部IO而带来的编码妥协——当一次外部IO比较高时，我们需要预先查询出来，作为参数传递给使用者，造成一些编码障碍，参数使用方也需要考虑代码顺序。</p>
+<h1 id="总结">总结</h1>
+<p>回到一开始的问题</p>
+<ol>
+<li>什么是响应式编程？</li>
+</ol>
+<p>如果要教科书上的答案，那么答案如下，这也是很多文章中一定会复制来的一段话<br>
+一种面向数据串流和变化传播的声明式编程范式。 这意味着可以在编程语言中很方便地表达静态或动态的数据流，而相关的计算模型会自动将变化的值通过数据流进行传播。<br>
+但实际上，用通俗的话讲，就是我们可以将程序类比成流水线——我们只需要构建好一条支持静态或动态流水线，静静的等待每个生产原料（http请求）到来即可，构建这个流水线的编程范式，即为响应式编程。</p>
+<ol>
+<li>响应式编程的优点在哪里？
+<ol>
+<li>优雅的编码——更简单、可组合和可读的非阻塞代码</li>
+<li>非常方便的良好错误处理和重试机制</li>
+<li>以更少的硬件资源处理更多的请求，增加接口的响应速度，提升系统的吞吐量</li>
+<li>可组装，可延迟执行，可重用</li>
+</ol>
+</li>
+</ol>
+<p>注：还有一个本文没有提及的高级特性：<br>
+Backpressure（背压）<br>
+描述的是在流水线中会发生的一种场景：某些异步的阶段处理速度跟不上，需要告诉上游生产者放慢速度。直接失败是不可接受的，因为会丢失太多数据。</p>
+<ol>
+<li>响应式编程的缺点:
+<ol>
+<li>上手成本比较高——响应式编程需要有较好的编程基础，至少需要熟练掌握java8的新特性以及函数式编程。</li>
+<li>需要新一些的底层依赖——至少Java8及Spring5，对于很多历史项目升级比较困难</li>
+<li>发布时间相对较短，中文文档比较少，目前提供出来的实际落地的业务最佳实践很少</li>
+</ol>
+</li>
+</ol>
+<h1 id="附言">附言</h1>
+<p><a href="https://projectreactor.io/docs/core/release/reference/#null-safety">Spring 5.0 是 2017 年 9 月 28 日发布的</a>，距今已将近六年，不过目前关于响应式编程的国内相关文档并不多，相关闻名的成功实践也相对较少。<br>
+期待响应式编程犹如雨后春笋的一天。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%BC%95%E8%A8%80">引言</a></li>
+<li><a href="#%E8%83%8C%E6%99%AF">背景</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%93%8D%E5%BA%94%E5%BC%8F%E7%BC%96%E7%A8%8B">为什么需要响应式编程？</a>
+<ul>
+<li><a href="#blocking-is-wasteful">Blocking is Wasteful</a></li>
+<li><a href="#%E5%BC%82%E6%AD%A5%E5%AE%9E%E7%8E%B0%E9%9D%9E%E9%98%BB%E5%A1%9E">异步实现非阻塞</a>
+<ul>
+<li><a href="#callback%E5%9B%9E%E8%B0%83">callback回调：</a></li>
+<li><a href="#future">Future</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E5%93%8D%E5%BA%94%E5%BC%8F%E7%BC%96%E7%A8%8B%E5%AE%9E%E7%8E%B0%E9%9D%9E%E9%98%BB%E5%A1%9E">响应式编程实现非阻塞</a>
+<ul>
+<li><a href="#%E5%89%8D%E7%BD%AE%E7%9F%A5%E8%AF%86">前置知识</a></li>
+<li><a href="#why-mono-flux">Why Mono &amp; Flux</a></li>
+<li><a href="#mono-vs-optional">Mono vs Optional</a>
+<ul>
+<li><a href="#optional">Optional</a></li>
+<li><a href="#mono">Mono</a>
+<ul>
+<li><a href="#%E5%A3%B0%E6%98%8E">声明</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8">使用</a></li>
+<li><a href="#%E5%A3%B0%E6%98%8E%E6%B6%88%E8%B4%B9%E6%97%B6%E5%93%8D%E5%BA%94%E5%BC%8F%E4%BB%A3%E7%A0%81%E6%89%8D%E4%BC%9A%E8%A2%AB%E6%89%A7%E8%A1%8C">声明消费时响应式代码才会被执行</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#flux-vs-stream">Flux vs Stream</a></li>
+<li><a href="#%E5%93%8D%E5%BA%94%E5%BC%8F%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E6%8E%A5%E5%8F%A3%E8%B0%83%E7%94%A8">响应式实现一个接口调用</a></li>
+<li><a href="#%E5%93%8D%E5%BA%94%E5%BC%8F%E7%9A%84%E9%97%AE%E9%A2%98%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88">响应式的问题解决方案</a></li>
+<li><a href="#%E5%93%8D%E5%BA%94%E5%BC%8F%E7%BC%96%E7%A8%8B%E5%AF%B9%E5%90%8C%E6%AD%A5%E6%96%B9%E6%B3%95%E8%B5%B7%E6%95%88%E5%90%97">响应式编程对同步方法起效吗？</a>
+<ul>
+<li><a href="#%E5%93%8D%E5%BA%94%E5%BC%8F%E5%8F%91%E5%B8%83%E8%80%85%E5%8D%8F%E5%90%8C%E5%90%8C%E6%AD%A5%E5%8F%91%E5%B8%83%E8%80%85">响应式发布者协同同步发布者</a></li>
+<li><a href="#%E5%AE%8C%E5%85%A8%E5%90%8C%E6%AD%A5%E5%8F%91%E5%B8%83%E8%80%85">完全同步发布者</a></li>
+</ul>
+</li>
+<li><a href="#%E9%82%A3%E6%88%91%E7%9A%84%E5%90%8C%E6%AD%A5%E9%A1%B9%E7%9B%AE%E6%80%8E%E4%B9%88%E5%8A%9E%E5%91%A2">那我的同步项目怎么办呢？</a>
+<ul>
+<li><a href="#%E5%93%8D%E5%BA%94%E5%BC%8F%E5%AE%9E%E7%8E%B0%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B">响应式实现并发编程</a></li>
+</ul>
+</li>
+<li><a href="#%E5%93%8D%E5%BA%94%E5%BC%8F%E7%BC%96%E7%A8%8B%E7%9A%84%E9%AB%98%E9%98%B6%E7%94%A8%E6%B3%95">响应式编程的高阶用法</a>
+<ul>
+<li><a href="#%E5%A6%82%E4%BD%95%E7%9F%AD%E8%B7%AF">如何短路？</a></li>
+<li><a href="#%E5%8F%AF%E6%B6%88%E8%B4%B9%E6%AC%A1%E6%95%B0">可消费次数</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a></li>
+<li><a href="#%E9%99%84%E8%A8%80">附言</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://esencool.github.io/post/zhi-shi-za-ji/">
+              <h3 class="post-title">
+                知识杂记
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://esencool.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

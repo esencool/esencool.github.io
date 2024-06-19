@@ -1,0 +1,266 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>分布式一致性 | Esen</title>
+<link rel="shortcut icon" href="https://esencool.github.io//favicon.ico?v=1718774120551">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://esencool.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="分布式一致性 | Esen - Atom Feed" href="https://esencool.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="分布式一致性
+BASE理论
+
+基本可用(Basic Available )： 分布式系统在出现故障的时候，允许损失部分可用性，但需要保证核心功能可用；
+柔性状态(Soft State)： 同一数据的不同副本的状态，可以不需要实时一致。
+最终..." />
+    <meta name="keywords" content="技术文章" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://esencool.github.io/">
+  <img class="avatar" src="https://esencool.github.io//images/avatar.png?v=1718774120551" alt="">
+  </a>
+  <h1 class="site-title">
+    Esen
+  </h1>
+  <p class="site-description">
+    且共从容
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+        <a href="https://github.com/esencool" target="_blank">
+          <i class="ri-github-line"></i>
+        </a>
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              分布式一致性
+            </h2>
+            <div class="post-info">
+              <span>
+                2024-06-13
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+                <a href="https://esencool.github.io/tag/Ab380PTf0/" class="post-tag">
+                  # 技术文章
+                </a>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="分布式一致性">分布式一致性</h1>
+<h2 id="base理论">BASE理论</h2>
+<ol>
+<li><strong>基本可用(Basic Available )：</strong> 分布式系统在出现故障的时候，允许损失部分可用性，但需要保证核心功能可用；</li>
+<li><strong>柔性状态(Soft State)：</strong> 同一数据的不同副本的状态，可以不需要实时一致。</li>
+<li><strong>最终一致性(Eventual Consisstency)：</strong> 同一数据的不同副本的状态，可以不需要实时一致，但一定要保证经过一定时间提交后最终是一致的。</li>
+</ol>
+<h2 id="常见分布式事务选型">常见分布式事务选型</h2>
+<p>事务协调器（TC）：维护全局和分支事务的状态，驱动全局的提交或回滚。<br>
+事务管理器（TM）：定义全局事务的范围：开始全局事务、提交或回滚全局事务。<br>
+资源管理器(RM)：管理分支事务处理的资源，与TC通信以注册分支事务并报告分支事务的状态，并驱动分支事务的提交或回滚。</p>
+<h3 id="xa">XA</h3>
+<p>存储层实现两阶段提交协议，将事务的提交过程分为资源准备与资源提交两个阶段 prepare -&gt; commit</p>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点：通过本地事务+事务管理器的协调实现ACID，对业务代码无侵入。由于全程开启本地事务，所以分布式执行过程中数据都是强一致性的</li>
+<li>缺点：全程开启本地事务也带来性能低下的劣势，同时事务管理器非常重要，有单点问题，一旦发生故障，资源可能一直锁定无法释放。事务参与者如果在第二阶段出错，也会出现最终不一致的问题</li>
+</ul>
+<p>这是CAP中优先选择CP的方案，不满足大多数业务的诉求</p>
+<h3 id="tcc">TCC</h3>
+<p>TCC是Try、Confirm、Cancel的缩写，TCC事务需要业务方（即事务参与者）提供Try、Confirm、Cancel三个能力</p>
+<ul>
+<li>Try：完成业务检查，预留业务所需的资源。Try操作是整个TCC的精髓，可以灵活选择业务资源锁的粒度。</li>
+<li>Confirm：执行业务逻辑，直接使用Try阶段预留的业务资源，无须再次进行业务检查。</li>
+<li>Cancel：释放Try阶段预留的业务资源。</li>
+</ul>
+<p>TCC可以认为是应用层的两阶段提交，第一阶段是Try，第二阶段根据Try的结果决定执行Confirm还是Cancel：如果所有参与者都Try成功，则提交事务，调每个参与者Confirm接口，反之调每个参与者Cancel接口回滚事务<br>
+其中confirm与cancel默认是不会是失败的，这是保证一致性的基础。如果失败需要有补偿机制</p>
+<p><strong>设计TCC框架的注意事项</strong></p>
+<ol>
+<li>幂等控制</li>
+</ol>
+<p>由上文可知，TCC三个操作需要保证可重试，因此需要做好幂等控制</p>
+<ol start="2">
+<li>允许空回滚</li>
+</ol>
+<p>当Try调用超时或丢包，会触发事务回滚，事务管理器会调用Cancel。此时事务参与者可能尚未收到Try请求，却先收到Cancel请求，因此需要Cancel接口在实现时允许空回滚，返回回滚成功，让事务管理器认为已回滚</p>
+<ol start="3">
+<li>防悬挂控制</li>
+</ol>
+<p>在空回滚的场景下，若事务参与者已经执行完了Cancel，接着收到了Try请求，如果不将该请求拒绝，则会产生数据不一致，这就是『悬挂问题』，因此需要在Try操作执行前，先检查该事务是否已经被标记为回滚成功</p>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点
+<ul>
+<li>资源锁定由具体业务实现，锁定粒度可以更小、更灵活，可以带来性能的提升</li>
+<li>由业务方来控制整个业务活动，事务参与者可以引入集群，避免单点问题</li>
+</ul>
+</li>
+<li>缺点
+<ul>
+<li>Try、Confirm、Cancel是按照具体业务来实现，业务耦合度比较高</li>
+</ul>
+</li>
+</ul>
+<h3 id="saga">SAGA</h3>
+<p>SAGA事务核心思想是将长事务拆分为多个本地短事务并依次正常提交，如果所有短事务均执行成功，那么分布式事务提交；如果出现某个参与者执行本地事务失败，分两种恢复策略，第一种「正向恢复」，对失败节点进行重试，尽最大努力正向推进，第二种「反向恢复」，反向调用每个节点补偿操作，如果失败，重试直至成功</p>
+<p>SAGA由两部分操作组成：</p>
+<ul>
+<li>正向操作：将大事务拆分成若干个小事务，将整个分布式事务T分解为n个正向子事务，命名为T1，T2，...，Ti，...，Tn。</li>
+<li>补偿操作：为每一个子事务设计对应的补偿动作，命名为C1，C2，...，Ci，...，Cn。</li>
+</ul>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点：无资源锁定，可以带来较高的吞吐，系统可用性较好，同时对业务侵入适中</li>
+<li>缺点：不保证隔离性，有更新丢失、脏读等问题，需要业务层控制并发</li>
+</ul>
+<h3 id="本地消息表">本地消息表</h3>
+<p>本地消息表的方案中主要有两种角色：事务主动方和事务被动方，事务主动方在本地事务中完成业务处理和事务消息记录，事务被动方消费事务消息，完成自己的业务处理</p>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点：方案轻量容易实现</li>
+<li>缺点：事务支持不完备，基于本地消息的后续逻辑只能重试不能回滚/补偿，缺乏完整的后续编排和调度。消息服务的性能也会受到DB性能的影响</li>
+</ul>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%88%86%E5%B8%83%E5%BC%8F%E4%B8%80%E8%87%B4%E6%80%A7">分布式一致性</a>
+<ul>
+<li><a href="#base%E7%90%86%E8%AE%BA">BASE理论</a></li>
+<li><a href="#%E5%B8%B8%E8%A7%81%E5%88%86%E5%B8%83%E5%BC%8F%E4%BA%8B%E5%8A%A1%E9%80%89%E5%9E%8B">常见分布式事务选型</a>
+<ul>
+<li><a href="#xa">XA</a></li>
+<li><a href="#tcc">TCC</a></li>
+<li><a href="#saga">SAGA</a></li>
+<li><a href="#%E6%9C%AC%E5%9C%B0%E6%B6%88%E6%81%AF%E8%A1%A8">本地消息表</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://esencool.github.io/post/huan-cun/">
+              <h3 class="post-title">
+                Redis
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://esencool.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

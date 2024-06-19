@@ -1,0 +1,228 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>稳定性 | Esen</title>
+<link rel="shortcut icon" href="https://esencool.github.io//favicon.ico?v=1718774120551">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://esencool.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="稳定性 | Esen - Atom Feed" href="https://esencool.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Spring 框架
+重试
+Baeldung Guide—— Spring Retry
+Spring boot 比较友好的重试组件：spring-retry
+提供了两种使用方式，分别为通过AOP和指令式声明。
+// 在请求发生链接异常，客户端..." />
+    <meta name="keywords" content="技术文章" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://esencool.github.io/">
+  <img class="avatar" src="https://esencool.github.io//images/avatar.png?v=1718774120551" alt="">
+  </a>
+  <h1 class="site-title">
+    Esen
+  </h1>
+  <p class="site-description">
+    且共从容
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+        <a href="https://github.com/esencool" target="_blank">
+          <i class="ri-github-line"></i>
+        </a>
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              稳定性
+            </h2>
+            <div class="post-info">
+              <span>
+                2024-02-09
+              </span>
+              <span>
+                2 min read
+              </span>
+              
+                <a href="https://esencool.github.io/tag/Ab380PTf0/" class="post-tag">
+                  # 技术文章
+                </a>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="spring-框架">Spring 框架</h1>
+<h2 id="重试">重试</h2>
+<p><a href="https://www.baeldung.com/spring-retry">Baeldung Guide—— Spring Retry</a><br>
+Spring boot 比较友好的重试组件：spring-retry<br>
+提供了两种使用方式，分别为通过AOP和指令式声明。</p>
+<pre><code>// 在请求发生链接异常，客户端异常时进行重试
+@Retryable(value = {ConnectException.class, FeignException.class}, maxAttempts = 4,
+        backoff = @Backoff(delay = 5000, maxDelay = 80000, multiplier = 4))
+</code></pre>
+<h2 id="降级">降级</h2>
+<p><a href="https://www.baeldung.com/spring-cloud-netflix-hystrix">Baeldung Guide——spring_boot_hystrix</a></p>
+<h2 id="限流">限流</h2>
+<h1 id="resilience4j">Resilience4j</h1>
+<p>Guide：https://resilience4j.readme.io/docs/getting-started<br>
+Resilience4j 是一个专为函数式编程设计的轻量级容错库，对lambda表达式友好，能清晰简洁地书写出稳定性的代码。提供了以下几个组件：</p>
+<h2 id="circuitbreaker-断路器">CircuitBreaker 断路器</h2>
+<p>本意是一个电气安全装置，可以手动开启关闭回路，也会自动断开回路，用于保护设备，防止火灾风险。别名有空气开关，保险开关等。<br>
+作为微服务间的断路器，通常作用在微服务调用间。<br>
+当与其他服务通信出现较多异常，是否需要直接抛出错误，而不再进行通信，减少下游压力。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1710989643007-c1fc887e-6aca-420e-8abd-289fc7724025.png#averageHue=%23afc2e1&amp;clientId=u49c1f552-6e06-4&amp;from=paste&amp;id=u59ce0728&amp;originHeight=528&amp;originWidth=428&amp;originalType=url&amp;ratio=1&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u6061b3c4-2deb-44b6-8477-7ccc0f0cba1&amp;title=" alt="" loading="lazy"></p>
+<h3 id="介绍">介绍</h3>
+<p>类比过后断路器的状态以及对应的变更策略就十分容易理解了</p>
+<ol>
+<li>当状态为CLOSED的时候，方法调用正常进行</li>
+<li>当状态为OPEN的时候，不进行方法调用，直接返回异常</li>
+<li>当状态为HALF_OPEN的时候，会允许配置值的方法继续执行来判断是否仍不可用，或已恢复可用。</li>
+</ol>
+<p>暂时无法在飞书文档外展示此内容</p>
+<h3 id="窗口策略">窗口策略</h3>
+<ol>
+<li>基于计数的滑动窗口 （count based）</li>
+</ol>
+<p>维护了一个计数的循环数组，在变更时增量更新聚合信息。因此能达到$$O(1$$的检索时间复杂度，$$O(n$$的空间复杂度。</p>
+<ol>
+<li>基于时间的滑动窗口 （time based）</li>
+</ol>
+<p>维护了N个聚合的循环数组，在时间窗口经过时，从旧的聚合中减去聚合部份并重置对应的聚合数组，在变更时增量更新信息。</p>
+<h2 id="缓存">缓存</h2>
+<p>内存缓存 Caffine <a href="https://bytedance.larkoffice.com/docx/GVPmdfX6joL2ldx4WS2cUKbVnMb">内存缓存 Caffine底层实现</a><br>
+缓存通常分为几类接口</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#spring-%E6%A1%86%E6%9E%B6">Spring 框架</a>
+<ul>
+<li><a href="#%E9%87%8D%E8%AF%95">重试</a></li>
+<li><a href="#%E9%99%8D%E7%BA%A7">降级</a></li>
+<li><a href="#%E9%99%90%E6%B5%81">限流</a></li>
+</ul>
+</li>
+<li><a href="#resilience4j">Resilience4j</a>
+<ul>
+<li><a href="#circuitbreaker-%E6%96%AD%E8%B7%AF%E5%99%A8">CircuitBreaker 断路器</a>
+<ul>
+<li><a href="#%E4%BB%8B%E7%BB%8D">介绍</a></li>
+<li><a href="#%E7%AA%97%E5%8F%A3%E7%AD%96%E7%95%A5">窗口策略</a></li>
+</ul>
+</li>
+<li><a href="#%E7%BC%93%E5%AD%98">缓存</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://esencool.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

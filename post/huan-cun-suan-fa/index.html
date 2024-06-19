@@ -1,0 +1,368 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>caffine | Esen</title>
+<link rel="shortcut icon" href="https://esencool.github.io//favicon.ico?v=1718774120551">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://esencool.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="caffine | Esen - Atom Feed" href="https://esencool.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Caffine GitHub地址
+缓存命中率算法
+LRU算法
+LRU全称为Least Recently Used，最近最少使用淘汰算法
+核心思想是：如果数据最近被访问过，那么将来被访问的几率也更高（局部性原理中的时间局部性）
+简单描述：每次..." />
+    <meta name="keywords" content="技术文章" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://esencool.github.io/">
+  <img class="avatar" src="https://esencool.github.io//images/avatar.png?v=1718774120551" alt="">
+  </a>
+  <h1 class="site-title">
+    Esen
+  </h1>
+  <p class="site-description">
+    且共从容
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+        <a href="https://github.com/esencool" target="_blank">
+          <i class="ri-github-line"></i>
+        </a>
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              caffine
+            </h2>
+            <div class="post-info">
+              <span>
+                2024-06-12
+              </span>
+              <span>
+                10 min read
+              </span>
+              
+                <a href="https://esencool.github.io/tag/Ab380PTf0/" class="post-tag">
+                  # 技术文章
+                </a>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p><a href="https://github.com/ben-manes/caffeine">Caffine GitHub地址</a></p>
+<h1 id="缓存命中率算法">缓存命中率算法</h1>
+<h2 id="lru算法">LRU算法</h2>
+<p>LRU全称为Least Recently Used，最近最少使用淘汰算法<br>
+核心思想是：如果数据最近被访问过，那么将来被访问的几率也更高（局部性原理中的时间局部性）<br>
+简单描述：每次淘汰链表尾部的缓存，如果缓存被访问过，放置到链表头部<br>
+暂时无法在飞书文档外展示此内容<br>
+在上图中使用单向链表表示链表的头尾，但在实现中使用的是双向链表<br>
+实现结构：至少需要一个HashMap和双向链表</p>
+<ol>
+<li>HashMap用于<code>O(1)</code>判断是否缓存存在&amp;找到缓存的位置</li>
+<li>双向链表用于<code>O(1)</code>找到缓存的前后节点，快速连接两个节点</li>
+</ol>
+<p>实际上可以直接使用jdk的LinkedHashMap，重写removeEldestEntry()方法即可，可以参考<br>
+<a href="https://github.com/apache/dubbo/blob/7a48fac84b14ac6a21c1bdfc5958705dd8dda84d/dubbo-common/src/main/java/org/apache/dubbo/common/utils/LRUCache.java#L23">apache/dubbo中的LRUCache实现</a><br>
+LRU的缺点：</p>
+<ol>
+<li>LRU如果想要达到比较好的缓存命中率，需要较大的内存占用。</li>
+<li>对于周期流量进入缓存，淘汰周期比较久，会污染维护的访问记录</li>
+</ol>
+<h2 id="lfu算法">LFU算法</h2>
+<p>Least Frequently Used 最近最常使用<br>
+实现方式是基于LRU算法，维护每个缓存的访问次数，链表中的顺序按照访问次数排列，每次删除访问次数最少的。<br>
+由于排序操作是比较耗费时间的，缓存算法必须要具有优秀的时间复杂度，所以LFU算法会使用2个HashMap和n个链表<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149890-fc614c55-8a34-4e7b-b8b7-f42d22eb3416.png#averageHue=%23504a43&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u01017f58&amp;originHeight=731&amp;originWidth=891&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u465d79ea-6295-4dfc-a599-ccc2ff7915f&amp;title=" alt="" loading="lazy"><br>
+左侧蓝色的HashMap用于做缓存node的映射，用于<code>O(1</code>判断缓存是否存在，找到缓存的位置<br>
+上方绿色的HashMap用于做频率-&gt;双向链表的映射，用于<code>O(1</code>找到对应频率的双向链表位置<br>
+如何在绿色的HashMap中维护最小的频率key呢？可以使用优先队列作为辅助，时间复杂度为<code>O(logn</code>，这也是简单实现的LFU算法的理论复杂度最大的步骤，也是在十几年前LRU算法使用率比LFU更高的原因<br>
+注意：<code>O(logn)</code>的算法在实际使用中并不一定比<code>O(1)</code>算法慢<br>
+<a href="https://arxiv.org/pdf/2110.11602.pdf">O(1)时间复杂度实现LFU</a>论文中提供了一种时间复杂度为<code>O(1)</code>的实现方式</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149802-d1ff143f-4812-4671-a155-462d3ef0998f.png#averageHue=%23eeeeee&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u63929e74&amp;originHeight=182&amp;originWidth=420&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ue24b78fd-77bd-445b-b7d9-3387db96959&amp;title=" alt="" loading="lazy"><br>
+访问缓存z前<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149988-8b11815b-b702-49b0-b1e8-07474b9fd20c.png#averageHue=%23f1f1f1&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u0e025ee0&amp;originHeight=233&amp;originWidth=499&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u6db703f0-3f64-4ada-b4df-f95e8ed80fb&amp;title=" alt="" loading="lazy"><br>
+访问缓存z后<br>
+根据论文中的插图，使用有序双向链表来代替了上图中绿色的HashMap<br>
+LFU有以下两个缺点：</p>
+<ol>
+<li>需要维护频率信息，每次访问都需要更新，维护的成本比较高。</li>
+<li>缓存实际上与时间有关，有些早先访问频率高的缓存很难被剔除</li>
+</ol>
+<h2 id="tinylfu"><a href="https://arxiv.org/pdf/1512.00727.pdf">TinyLFU</a></h2>
+<p>论文地址：<a href="https://arxiv.org/pdf/1512.00727.pdf">https://arxiv.org/pdf/1512.00727.pdf</a><br>
+参考翻译：https://www.qin.news/tinylfu/<br>
+TinyLFU是对LFU算法的优化版本，保证了算法的理论，但是用牺牲一部分准确性的方式换来了更高的性能<br>
+在学习tinyLFU之前需要了解两个知识点：</p>
+<h3 id="布隆过滤器-bloom-filter"><a href="https://dl.acm.org/doi/pdf/10.1145/362686.362692">布隆过滤器 Bloom Filter</a></h3>
+<p>布隆过滤器是一个ACM领域常见的知识点，由Burton Howard Bloom在1970年提出的，用于检索一个元素是否在一个集合中。它的优点是空间效率和查询时间都远远超过一般的算法，缺点是有一定的误识别率和删除困难。<br>
+判断一个元素是否在集合中，常见的是使用Set，最低的时间复杂度为<code>O(1)</code>的HashSet<br>
+HashSet的底层是HashMap<br>
+布隆过滤器提供了一个牺牲一定准确性的高效方式：<br>
+布隆过滤器的底层是一个位数组 bit array</p>
+<ol>
+<li>开始，数组集合为空，位数组的所有位都为0</li>
+<li>元素插入时，用k个哈希函数计算对应的Hash值，对k个结果按数组长度取余数，将对应位置设置为1</li>
+<li>当元素查询时，计算k个hash值，并取余数，如果对应位置都为1，则元素可能存在于数组中，如果有一个结果不为1，则元素一定不在数组中。</li>
+</ol>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149995-c9adac41-d603-4cb2-8a51-2a186d751d3d.png#averageHue=%23f3f3f3&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u147896ed&amp;originHeight=482&amp;originWidth=783&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ud0d9191c-4e78-4a44-9c4b-c2d751dd306&amp;title=" alt="" loading="lazy"><br>
+由原理可知，布隆过滤器不需要存储元素本身，占用的内存空间极小，在1%误差时，平均每个元素占用的内存小于16bit。算法复杂度是常数时间，即<code>O(1)</code></p>
+<h3 id="cm-sketch"><a href="https://bytedance.feishu.cn/docx/GVPmdfX6joL2ldx4WS2cUKbVnMb#part-IqGddkou1o31xLxNtPSchtyUnfc">CM-Sketch</a></h3>
+<p>在了解Bloom Filter之后，对于CM-Sketch的理解就相对容易，可以看作是用来求元素在集合中数量的布隆过滤器。<br>
+CM-Sketch的结构可以近似为一个二维数组，有d个不同的哈希函数，即<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>h</mi><mi>i</mi></msub><mo>(</mo><mo>)</mo></mrow><annotation encoding="application/x-tex">h_{i}()</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">h</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mclose">)</span></span></span></span>。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150110-86dfe703-6e04-4a55-a573-5dfb305fc163.png#averageHue=%23282828&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u2a8f92b3&amp;originHeight=350&amp;originWidth=733&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ua7e1a77e-f0dc-48cc-bbda-74ea219c3c7&amp;title=" alt="" loading="lazy"><br>
+当元素加入集合中时，对于每一行都用哈希函数来将对应位置+1<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150421-3b24e636-fa2f-4023-8581-f43e5284a2bf.png#averageHue=%23272727&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u8fff1d64&amp;originHeight=330&amp;originWidth=698&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u443efa8e-dae0-4b7a-8ab5-8568b3c5c6f&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150558-848eb6f4-9d1a-43dd-98f7-b36860865eb8.png#averageHue=%23272727&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u65cd30ca&amp;originHeight=337&amp;originWidth=690&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ucb973090-e940-4fee-867a-91ac7428216&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150587-c88eae3d-5631-4fca-8001-512385e2a2e7.png#averageHue=%23272727&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u7c39e7a8&amp;originHeight=343&amp;originWidth=691&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=uda258e70-a6eb-4161-9f71-60987a33911&amp;title=" alt="" loading="lazy"><br>
+元素a到达<br>
+元素a到达第二次<br>
+元素b到达<br>
+在查询元素出现了多少次时，取对应散列值的最小值，例如此时对于元素a来说，出现次数为<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>m</mi><mi>i</mi><mi>n</mi><mo>(</mo><mn>2</mn><mo separator="true">,</mo><mn>3</mn><mo separator="true">,</mo><mn>2</mn><mo>)</mo><mo>=</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">min(2,3,2)=2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">m</span><span class="mord mathdefault">i</span><span class="mord mathdefault">n</span><span class="mopen">(</span><span class="mord">2</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">3</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">2</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span></span></span></span>次<br>
+同样的，CM-SKetch和布隆过滤器有相同的特点，容忍一定误差，但是效率极高，空间占用率非常低。</p>
+<h3 id="tinylfu实现方式">TinyLFU实现方式</h3>
+<p>当我们引出布隆过滤器和CM-Sketch之后，我们大致就能猜出TinyLFU的实现思想了。<br>
+相对于LFU的精确访问频率计算，TinyLFU用一个高效的方式去逼近这个结果。<br>
+但TinyLFU还有一些缺点：</p>
+<ol>
+<li>无法应对稀疏流量：稀疏流量没有建立足够的频率，就被淘汰了。</li>
+<li>早期经常访问的缓存会赖着不淘汰，一直占据坑位。</li>
+</ol>
+<h1 id="caffiene的优化">Caffiene的优化</h1>
+<h2 id="更容易计算的访问频率">更容易计算的访问频率</h2>
+<p>相对于LFU维护了元素的访问次数，很多时候我们并不一定需要严格，精确的访问次数，使用有一定容忍度的误差值也是能够很好的满足使用场景，因此使用CM-Sketch可以变向替代需要的「访问频率」。<br>
+在Caffeine中，维护了一个4bits的CM-Sketch来记录频率，具体可见FrequencySketch这个类。由于4bits的内存能记录的最大频率为<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mo>&lt;</mo><mo>&lt;</mo><mn>4</mn><mo>−</mo><mn>1</mn><mo>=</mo><mn>15</mn></mrow><annotation encoding="application/x-tex">2&lt;&lt;4-1=15</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68354em;vertical-align:-0.0391em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&lt;</span></span><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mrel">&lt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">5</span></span></span></span>，高频缓存触发几率显然要高于这个值，这就需要一个更新机制了</p>
+<h2 id="更新机制">更新机制</h2>
+<p>为了解决数据访问模式随时间变化的问题，也为了避免计数无限增长，采用了一种基于滑动窗口的时间衰减设计机制，借助于一种简易的 reset 操作：每次添加一条记录到 Sketch 的时候，都会给一个计数器上加 1，当计数器达到一个尺寸 W 的时候，把所有记录的 Sketch 数值都除以 2<br>
+该 reset 操作可以起到频次衰减的作用，让早期经常访问的缓存也进入决斗场，输者离席。<br>
+论文3.3.1中进行了数学证明，表明这种更新机制的命中期望是影响比较小的。<br>
+个人碎碎念：这个还是很厉害的，很多LFU算法使用int来记录访问频次，这就需要32bit，相比于TinyLFU耗费了8倍内存。</p>
+<pre><code class="language-java">public void increment(@NonNull E e) {
+    if (isNotInitialized()) {
+        return;
+    }
+
+    int hash = spread(e.hashCode());
+    int start = (hash &amp; 3) &lt;&lt; 2;
+
+    // Loop unrolling improves throughput by 5m ops/s
+    int index0 = indexOf(hash, 0);
+    int index1 = indexOf(hash, 1);
+    int index2 = indexOf(hash, 2);
+    int index3 = indexOf(hash, 3);
+
+    boolean added = incrementAt(index0, start);
+    added |= incrementAt(index1, start + 1);
+    added |= incrementAt(index2, start + 2);
+    added |= incrementAt(index3, start + 3);
+
+    if (added &amp;&amp; (++size == sampleSize)) {
+        reset();
+    }
+}
+</code></pre>
+<p>频率+1 源码</p>
+<pre><code class="language-java">boolean incrementAt(int i, int j) {
+    int offset = j &lt;&lt; 2;
+    long mask = (0xfL &lt;&lt; offset);
+    if ((table[i] &amp; mask) != mask) {
+        table[i] += (1L &lt;&lt; offset);
+        return true;
+    }
+    return false;
+}
+</code></pre>
+<p>频率+1 源码</p>
+<pre><code class="language-java">void reset() {
+    int count = 0;
+    for (int i = 0; i &lt; table.length; i++) {
+        count += Long.bitCount(table[i] &amp; ONE_MASK);
+        table[i] = (table[i] &gt;&gt;&gt; 1) &amp; RESET_MASK;
+    }
+    size = (size &gt;&gt;&gt; 1) - (count &gt;&gt;&gt; 2);
+}
+</code></pre>
+<p>更新机制源码<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150568-fd06868c-6323-4a9e-b3b9-b06d55b8aeb5.png#averageHue=%23f8f8f8&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u5766ef6b&amp;originHeight=221&amp;originWidth=489&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u463ec295-b567-4bae-b4c0-64e465d45db&amp;title=" alt="" loading="lazy"></p>
+<h2 id="window-cache">Window Cache</h2>
+<p>使用Window Cache来应对突发性的系数访问。Window Cache的实际总缓存体积只占1%，内部采用分段LRU算法，用于保留突发性的访问，避免有些突发缓存会被一直淘汰的问题。<br>
+如果缓存被Window Cache淘汰，这时会进入到TinyLFU的流程。<br>
+这样稀疏流量会先停驻在Window Cache，被淘汰后才与LRU进行竞争。</p>
+<h2 id="main-cache">Main Cache</h2>
+<p>主缓存的总容量是99%，分为Candidate区和probation区，两者默认比例为8:2，会根据运行时数据动态调整。<br>
+简单来说</p>
+<ol>
+<li>所有的新数据都会进入Window Cache，这里是最安全的地方，就像双败赛制的胜者组，被淘汰了才会进入Main Cache进行PK</li>
+<li>进入Main Cache之后，会先进入probation区</li>
+<li>如果在probation区被访问到了，可以晋升到Candidate区，如果在probation区被淘汰，就出局了</li>
+<li>如果在Candidate区被淘汰，还可以回到probation区，回到第2步</li>
+</ol>
+<p>一个有趣的设计：</p>
+<ol>
+<li>在PK时，谁的频率低谁输，如果平局则</li>
+<li>如果你的频率为5，那么你输了，否则</li>
+<li>听天由命，随机淘汰一个</li>
+</ol>
+<p>这样回顾更新机制，早期热门key也一直伴随危险，15的频率如果减半只剩下了7，如果频率再变低（再次触发更新机制）或者遇到频率更高的对手就有可能被淘汰。</p>
+<pre><code class="language-java">boolean admit(K candidateKey, K victimKey) {
+    int victimFreq = frequencySketch().frequency(victimKey);
+    int candidateFreq = frequencySketch().frequency(candidateKey);
+    if (candidateFreq &gt; victimFreq) {
+        return true;
+    } else if (candidateFreq &lt;= 5) {
+        // The maximum frequency is 15 and halved to 7 after a reset to age the history. An attack
+        // exploits that a hot candidate is rejected in favor of a hot victim. The threshold of a warm
+        // candidate reduces the number of random acceptances to minimize the impact on the hit rate.
+        return false;
+    }
+    int random = ThreadLocalRandom.current().nextInt();
+    return ((random &amp; 127) == 0);
+}
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E7%BC%93%E5%AD%98%E5%91%BD%E4%B8%AD%E7%8E%87%E7%AE%97%E6%B3%95">缓存命中率算法</a>
+<ul>
+<li><a href="#lru%E7%AE%97%E6%B3%95">LRU算法</a></li>
+<li><a href="#lfu%E7%AE%97%E6%B3%95">LFU算法</a></li>
+<li><a href="#tinylfu">TinyLFU</a>
+<ul>
+<li><a href="#%E5%B8%83%E9%9A%86%E8%BF%87%E6%BB%A4%E5%99%A8-bloom-filter">布隆过滤器 Bloom Filter</a></li>
+<li><a href="#cm-sketch">CM-Sketch</a></li>
+<li><a href="#tinylfu%E5%AE%9E%E7%8E%B0%E6%96%B9%E5%BC%8F">TinyLFU实现方式</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#caffiene%E7%9A%84%E4%BC%98%E5%8C%96">Caffiene的优化</a>
+<ul>
+<li><a href="#%E6%9B%B4%E5%AE%B9%E6%98%93%E8%AE%A1%E7%AE%97%E7%9A%84%E8%AE%BF%E9%97%AE%E9%A2%91%E7%8E%87">更容易计算的访问频率</a></li>
+<li><a href="#%E6%9B%B4%E6%96%B0%E6%9C%BA%E5%88%B6">更新机制</a></li>
+<li><a href="#window-cache">Window Cache</a></li>
+<li><a href="#main-cache">Main Cache</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://esencool.github.io/post/la-ji-hui-shou-suan-fa/">
+              <h3 class="post-title">
+                垃圾回收算法
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://esencool.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

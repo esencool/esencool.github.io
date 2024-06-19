@@ -1,0 +1,935 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://esencool.github.io/</id>
+    <title>Esen</title>
+    <updated>2024-06-19T05:15:22.657Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://esencool.github.io/"/>
+    <link rel="self" href="https://esencool.github.io/atom.xml"/>
+    <subtitle>且共从容</subtitle>
+    <logo>https://esencool.github.io/images/avatar.png</logo>
+    <icon>https://esencool.github.io/favicon.ico</icon>
+    <rights>All rights reserved 2024, Esen</rights>
+    <entry>
+        <title type="html"><![CDATA[响应式编程]]></title>
+        <id>https://esencool.github.io/post/xiang-ying-shi-bian-cheng/</id>
+        <link href="https://esencool.github.io/post/xiang-ying-shi-bian-cheng/">
+        </link>
+        <updated>2024-06-19T05:13:54.000Z</updated>
+        <content type="html"><![CDATA[<p>官方文档<a href="https://projectreactor.io/docs/core/release/reference/">Reactor 3 Reference Guide</a><br>
+练习代码地址：https://github.com/esencool/reactive-programming-demo</p>
+<h1 id="引言">引言</h1>
+<p>在这里讲一下做这次分享的源头：</p>
+<ol>
+<li>在之前有同学做过关于netty网络框架的分享，其中提到了NIO和reactor模型。</li>
+</ol>
+<p>但在目前的实际业务开发中，我们并没有使用到这些特性，接口仍然是串行调用的。<br>
+从语言的角度看，实现非阻塞交互并不是一件非常困难的事情，JavaScript就实现了单线程非阻塞式的异步。<br>
+本文所提及的响应式编程，即为一种实现非阻塞的编程范式，它可以是单线程的，也可以是多线程的。</p>
+<ol>
+<li>响应式编程目前作为一门「比较新」的技术，不会出现内容老生常谈而感到无聊。</li>
+<li>响应式编程已经在spring5中被引入，离我们并不「远」。也许x年之后就会像java8一样被广泛地使用。</li>
+</ol>
+<p>First of all：</p>
+<ol>
+<li>本文从实践入手，响应式框架的底层原理依赖对应网络框架（netty，tomcat等），以web最常用的webFlux为例。</li>
+<li>我对响应式编程的理解也比较浅薄，如有疏漏欢迎指教。</li>
+</ol>
+<h1 id="背景">背景</h1>
+<p>在进行业务开发的时候，我们会发现一个接口会去做很多IO高的操作是非常常见的，诸如操作数据库，查询其他服务接口，与其他中间件交互等。一部分性能瓶颈的场景也多见于频繁IO。<br>
+这里举一个简单的例子：我们的服务需要去查询其他两个服务的数据（或者从数据库中查询两次数据）然后做聚合，然后组装这两个参数返回给前端。如下图所示。<br>
+[图片]<br>
+我们会发现接口的时间很大一部分用在了等待2，4两跳的返回，接口的性能主要限制在此。<br>
+为什么即使使用了支持NIO的网络框架，例如netty，tomcat，为什么我们没有使用到NIO的网络特性呢？</p>
+<ol>
+<li>对于网络IO，这是由于我们经常使用的RestTemplate是一个同步方式执行请求的类。</li>
+</ol>
+<p>RestTemplate源自Spring3，使用简单开发高效，被广泛使用。<br>
+在发现同步请求并不是最优解的时候，Spring4中引入了AsyncRestTemplate，不过完善程度不高且使用起来很复杂，被标记为duplicate，且在后续版本中被移除。<br>
+本文的主角WebClient自spring5.0被引入，是非阻塞&amp;响应式的执行http请求的实现。</p>
+<ol>
+<li>对于数据库的执行，我们常用的JDBC版本也是同步方式进行请求。</li>
+</ol>
+<p>同步意味着简单，可以从业人员不需要具有很高的技术水平就可以写出实现功能的代码。<br>
+但当对于Tob业务来说，与上下游交互的业务逻辑变得复杂，同步方式很快就会触及性能瓶颈，我们相当一部分慢接口的原因就是网络调用时间比较长。<br>
+很容易发现，在进行IO的过程中，CPU往往在“偷懒”，它并没有被高效的利用，而只是静静的等待IO的返回。</p>
+<h1 id="为什么需要响应式编程">为什么需要响应式编程？</h1>
+<p>在学习一项东西的时候，我们往往要问两个问题。</p>
+<ol>
+<li>什么是响应式编程？</li>
+<li>响应式编程有哪些优点？（为什么要响应式编程？）</li>
+</ol>
+<p>这些问题我们先给一个笼统的回答——其中具体的精髓可以从</p>
+<ol>
+<li>响应式编程是一种编程范式</li>
+<li>用于实现非阻塞IO编程。</li>
+</ol>
+<p>接下来，我给出一个demo，带大家有一个初步理解。这里使用spring web框架中最流行的webClient作为例子。<br>
+举个例子，我们需要实现如下接口逻辑</p>
+<ol>
+<li>需要去用户信息服务查询基本信息</li>
+<li>需要去用户关注服务查询用户关注列表</li>
+<li>组合两者结果，返回给前端</li>
+</ol>
+<p>假设两个查询接口均需要2s才能返回数据。<br>
+这里是DemoController中服务提供方的实现，我们省略细节（对应的repository为固定结果），控制接口响应时间<br>
+[图片]</p>
+<h2 id="blocking-is-wasteful">Blocking is Wasteful</h2>
+<p>大家在写Spring Boot 程序时，通常还使用着早期的方式——阻塞代码来编写程序。<br>
+目前的服务器硬件性能不断提高，但软件的性能仍然是一个问题。<br>
+更差的在于阻塞会带来资源浪费，特别是我们目前的应用模式，经常CPU负载并不高，但是IO时间较长，让线程进入空闲状态等待数据返回，整个服务的吞吐量不高。<br>
+我们有必要高效利用硬件的能力，避免资源浪费。<br>
+如下是使用同步方式编写的代码，基于restTemplate<br>
+[图片]<br>
+以上代码中，restTemplateClient 即底层为restTemplate的同步请求<br>
+我们调用接口的所需时间是4s多一点<br>
+这里不做过多解释<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907615-5e657149-1903-41f8-b99a-cd76f452da26.png#averageHue=%23fbfbfb&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u438cd3fe&amp;originHeight=520&amp;originWidth=790&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=uf759edce-2e90-4802-bde4-604045bff87&amp;title=" alt="" loading="lazy"><br>
+注：如果没有进行特殊处理的话，第一次请求会比较慢，我们可以多运行几次观察理想结果。这是由于<br>
+JVM 需要经过解释执行 (interpreter) 找到热点，然后通过 JIT 编译器来加速热点方法的运行。应用启动之后会有很长的时间处于寻找热点，编译热点的状态，这时很多性能指标 (CPU 使用率, TPS 吞吐量, RT 响应时间)是不理想的。当 Java 应用启动并提供服务之后，在一定时间内，处于一种 Warmup 的状态。</p>
+<hr>
+<h2 id="异步实现非阻塞">异步实现非阻塞</h2>
+<p>Javaers大多使用异步并行的方式来提高程序的性能。但是这种方式并不是完全的灵丹妙药，在功能不断堆叠，访问量增加的情况下，会引入一些问题。<br>
+在JVM上实现异步代码，java提供了两种异步编程方式：</p>
+<h3 id="callback回调">callback回调：</h3>
+<p>不含有返回值，但是新增一个callback参数，当结果可用时调用callback.<br>
+<strong>缺点（致命缺点）</strong>：当业务逻辑变得复杂，很容易形成回调地狱Callback Hell。这也是前面提到的spring4中引入的AsyncRestTemplate被弃用的原因。<br>
+我对回调的方式实现异步的代码写的比较少，不过可以尝试猜测回调地狱的主要原因</p>
+<ol>
+<li>代码可读性不强，代码顺序不意味着时序逻辑，维护成本较高。</li>
+<li>仍需要在某一处用代码显式等待异步callback执行完成，等待时机不好把握且代码不优雅。</li>
+<li>完善的工具类/模板代码较少，编码复杂。</li>
+</ol>
+<h3 id="future">Future</h3>
+<p>返回一个Future<T>，Future包装了对返回结果T的访问，返回的Future并不立即可用，还是需要轮询或其他方式来阻塞获取返回结果T<br>
+我们以最流行且相对好用且是JDK中提供的CompletableFuture来举例，对于上方代码的优化需要写成如下形式：<br>
+[图片]<br>
+我们可以看到，即使如此，还是有一些缺点：</p>
+<ol>
+<li>提交任务和等待收集结果是有小量的开销的。</li>
+<li>线程池的配置令人烦躁，诸多参数如何设置很容易陷入纠结，需要考虑很多因素，甚至需要随着业务发展跟随变化。</li>
+<li>try-catch来等待所有请求完成的写法看起来并不优雅。</li>
+<li>对于每个Runnable可能发生的异常进行处理会造成代码编写比较复杂。
+<ol>
+<li>如果想忽略某个Runnable的异常，那么需要在12行捕获对应特定的异常并忽略，或者重新用try-catch封装对应Runnable方法。</li>
+<li>如果某个Runnable出现异常，此时想阻断整个流程，但抛出业务异常（而非并发异常），需要捕获并重新抛出。</li>
+</ol>
+</li>
+<li>复杂的编码。
+<ol>
+<li>将请求并发，相对于简单同步的方式要多写很多代码。
+<ol>
+<li>上述写法使用了具有副作用的Runnable，如果想移除这些副作用，需要预先声明方法的返回值，这会让这些变量的声明距离变量的使用间隔较远，且当需要异步的Runnable变多，代码可读性会降低。</li>
+<li>如果有更复杂的异步流程或需指定线程池，代码都会更加复杂，</li>
+</ol>
+</li>
+<li>为了忽略异常，往往要重新用try-catch封装已实现的方法</li>
+<li>如果有复杂的并发流程，虽然已经提供了thenApplyAsync等方法，但实现起来会非常复杂。</li>
+</ol>
+</li>
+</ol>
+<p>让我们运行一下Future方式实现的并发编程，看一下我们的优化程度如何。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907650-d61e6c6b-15cb-4e6a-8f8c-9c57b86dddeb.png#averageHue=%23252c2f&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u2078ad80&amp;originHeight=268&amp;originWidth=1668&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u01857d14-68fb-410d-ab3e-48ad8669771&amp;title=" alt="" loading="lazy"><br>
+通过观察日志，可以看到两个接口的调用请求确实进入并行了，分别为onPool-worker-1和onPool-worker-2。<br>
+最终的运行结果为2.03s左右<br>
+类似木桶效应，并发可以让接口的响应时长接近于最长的接口返回时间。这里比较容易理解。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907624-96330e7c-afb1-4a9e-b5ce-a17526f4f239.png#averageHue=%23fbfbfb&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u553233e0&amp;originHeight=576&amp;originWidth=798&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u37700955-9811-48cc-8789-ceb450cc706&amp;title=" alt="" loading="lazy"></p>
+<hr>
+<h1 id="响应式编程实现非阻塞">响应式编程实现非阻塞</h1>
+<h2 id="前置知识">前置知识</h2>
+<p>在讲解响应式编程之前，需要大家了解一些基础，不然看代码会有所迷惑。<br>
+这也是响应式编程的缺点：学习曲线比较陡峭<br>
+响应式编程需要函数式编程，lamba表达式作为基础，如果对这两者理解过浅，直接入门响应式编程会很困难。<br>
+另一方面，为了实现更简单的编码，较多的api也带来了更高的学习成本。这意味着你想写出很酷的代码，需要熟练掌握较多的api。<br>
+下面将响应式编程所基于webflux的Mono和Flux与java8中的Optional和Stream相对比，方便大家快速入门。<br>
+默认大家很熟悉Optional和Stream，重点放在Mono与Flux</p>
+<h2 id="why-mono-flux">Why Mono &amp; Flux</h2>
+<p>需要引入新的实现来实现响应式的特点。<br>
+Web Flux即为一种响应式编程的实现，其中对于业务开发人员编写响应式代码来说，主要接触的是Publisher接口，因为Subscriber接口已经由web flux框架实现。<br>
+其中Mono 和Flux便是两个Publisher接口的实现类。<br>
+Mono针对单个元素，Flux针对集合。</p>
+<hr>
+<h2 id="mono-vs-optional">Mono vs Optional</h2>
+<h3 id="optional">Optional</h3>
+<p>Optional<T>是一个用来表达一个对象 T 可能为空的方式。它的主要用途为</p>
+<ol>
+<li>避免空指针。在使用方拿到Optioinal的情况下必须要进行判空处理</li>
+<li>函数式编程。提供了map，filter方法，可以将T编排到方法所组成的链式流水线上</li>
+</ol>
+<h3 id="mono">Mono</h3>
+<p>在响应式编程中Mono<T> 用来表达可以产生一个T的发布者(publisher)，但并不要求必须是非阻塞的。<br>
+更加详细的说明书：<a href="https://projectreactor.io/docs/core/release/reference/#which.create">相关API</a></p>
+<h4 id="声明">声明</h4>
+<p>这里举几个例子<br>
+[图片]</p>
+<h4 id="使用">使用</h4>
+<p>相比于贫瘠的Optional的消费函数，可以消费Mono的方式有非常多<br>
+[图片]</p>
+<h4 id="声明消费时响应式代码才会被执行">声明消费时响应式代码才会被执行</h4>
+<p>这里和Stream有一些类似，<strong>只有在声明了终止操作时</strong>，Mono才会被消费。<br>
+<strong>这是非常合理的</strong>，声明时就消费会带来更高的编写代码成本——我们通常都是声明好流水线的顺序，最后才执行代码。一旦声明代码就开始执行，就会过于依赖代码的书写顺序，这会使代码异常难以维护。<br>
+在webFlux框架下，声明接口只需要返回Mono或者Flux即可，框架会处理对应生产者的消费。<br>
+消费的简单用法即为subscribe 和subscribeOn，后者可以指定在哪个线程中执行，这在后面的例子中会详细说明。<br>
+同时，Mono也提供了toFuture的方法，可以直接获得一个对应的CompletableFuture，方便与历史代码配合。</p>
+<hr>
+<h2 id="flux-vs-stream">Flux vs Stream</h2>
+<p>类似的，Flux<T>表示<strong>可以提供一系列T的发布者</strong>。<br>
+这往往有着一个误区，很多人误认为Flux和Stream的区别和用法也是类似的，是用于处理集合的类，这是一个错误观念。Flux固然有着处理集合的能力，但集合的处理仍推荐使用Stream或其拓展版StreamEx。<br>
+<strong>Flux是用来处理多个发布者的类</strong>，这里Mono可类比为每个需要执行的任务，Flux类比为管理相同类型任务集合的类。<br>
+具体提供的api可见，复杂的任务流程可以通过这些api用更简单高效的编码方式书写出来。<br>
+[图片]<br>
+接下来，让我们使用一个响应式编程来解决上面的问题。</p>
+<hr>
+<h2 id="响应式实现一个接口调用">响应式实现一个接口调用</h2>
+<p>这里是一个响应式获得Mono<UserBasicInfo>和Mono<UserFavorite>的client例子。<br>
+其中WebClient是springFlux中提供的标准的响应式Client<br>
+使用bodyToMono方法来获得对应的类型返回值。<br>
+另外，构造器模式实现的响应式请求调用相对于RestTemplate的多参数同步调用实现的更加工整优雅。<br>
+[图片]</p>
+<h2 id="响应式的问题解决方案">响应式的问题解决方案</h2>
+<p>[图片]<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907608-e6d217f6-7336-4c59-bb54-116a765d4253.png#averageHue=%23252c2f&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u61167584&amp;originHeight=526&amp;originWidth=1654&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ue7dd8bea-f802-4219-9dd4-c6fa1c1d14b&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773907722-dd7ebbcf-4aaf-4913-82e6-74ef38c7d2a2.png#averageHue=%23fafafa&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u8bb9d773&amp;originHeight=590&amp;originWidth=806&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u3ff69da4-6a22-4581-ae7f-dcddc28ed1b&amp;title=" alt="" loading="lazy"><br>
+响应时间为2.02s<br>
+可以看到，我们实现了相同的结果，也可以发现响应式编程的优点：</p>
+<ol>
+<li>只使用了一个线程ctor-http-nio-3</li>
+<li>响应时间相比并行无明显差距</li>
+<li>和同步代码几乎完全相同的行数，代码非常简洁优美。</li>
+</ol>
+<p>从这里可以看出，由响应式编程实现的非阻塞，相比于异步并行，有如下优点：</p>
+<ol>
+<li>响应式实现非阻塞，不需要额外业务线程。
+<ol>
+<li>计算资源高效利用，减少了线程调度的时间，CPU真正处理业务逻辑的时间占比更高</li>
+<li>不需要对线程池的配置进行考虑，即使容器规格，业务规模发生变化，代码不需要改造</li>
+</ol>
+</li>
+<li>性能不明显劣于异步并行。</li>
+<li>响应式编程的可读性更好。</li>
+</ol>
+<h2 id="响应式编程对同步方法起效吗">响应式编程对同步方法起效吗？</h2>
+<p>举一个形象的例子，我们需要去不同餐馆吃饭。<br>
+对于同步编程来说，就像是我们在食堂一样，需要自己带着餐盘排队，排队完成才能拿到饭，想拿不同餐线的饭需要排多次队伍，吃两个餐线的饭的时间显然是两者之和。<br>
+对于响应式编程来说，就像是我们扫码点餐，当餐做好的时候服务员会通知你取餐，这样我们可以省去排队的时间，对于这种情况，时间只受限于最长的取餐时间。</p>
+<h3 id="响应式发布者协同同步发布者">响应式发布者协同同步发布者</h3>
+<p>对于下方代码，像这样zip了一个同步请求Mono.<em>fromCallable</em>(()-&gt;restTemplateService.getUserFavorites(userId)))和一个响应式请求webClientService.getUserInfo，会发现接口也只需要2s就能执行完。<br>
+[图片]<br>
+这时就像上面的比喻一样，根据贪婪算法很容易想到一个最优解——<br>
+我们先把能够扫码下单的菜单完成点餐，然后去排队就餐，排队结束后取扫码下单的菜。</p>
+<ol>
+<li>先让响应式请求发出（即使先声明同步请求）</li>
+<li>执行同步请求</li>
+<li>处理同步请求的结果（即使同步请求的获取结果时间更慢）</li>
+<li>最后获取响应式请求的结果，并进行处理</li>
+</ol>
+<h3 id="完全同步发布者">完全同步发布者</h3>
+<p>根据上文的分析可知，我们不存在可以预先发出的响应式请求，所有的同步请求只能在线程中依次执行，就如同没有使用响应式编程一样。这里就不再贴例子了。</p>
+<hr>
+<h2 id="那我的同步项目怎么办呢">那我的同步项目怎么办呢？</h2>
+<h3 id="响应式实现并发编程">响应式实现并发编程</h3>
+<p>事实上对应的开发者也考虑到了这种情况，即使我们的接口都是同步的，引入webflux也会有对应的好处——响应式编程也提供了高效，优雅，简洁的并发设计。<br>
+因为虽然开发者们提供了webclient，jdbc等常用的IO操作的响应式实现，但毕竟不是所有的操作都是响应式的，如果一旦回到同步世界就会导致优化失败，那组件的引入便无意义了。<br>
+接下来，给大家一个使用webflux高效实现并发编程的例子。<br>
+[图片]<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908314-ca260838-4125-4635-b383-0b37cbb7faf3.png#averageHue=%23262c2f&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u0a24df91&amp;originHeight=268&amp;originWidth=1660&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=uf137673a-c709-4d3e-9d6b-1ee7021257d&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908245-5f168f0b-0bb3-4cec-9f1e-47870aa79738.png#averageHue=%23fafafa&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u1afb11ef&amp;originHeight=594&amp;originWidth=816&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u0a3f9768-4c1b-4ba4-8cb3-8f19656ef68&amp;title=" alt="" loading="lazy"><br>
+可以看到，我们用很简单的方式实现了</p>
+<ol>
+<li>使用了两个线程oundedElastic-1，pool-4-thread-1并发加载</li>
+<li>总耗时为2.04s，实现了与CompletableFuture相近的并发结果。</li>
+<li>代码行数不多，而且非常优雅
+<ol>
+<li>第7行使用fromCallable方法创造了一个同步的生产者Mono<UserBasicInfo></li>
+<li>第9行指定了线程池。我们可以非常简单的制定自己想设置的线程池。这时Mono<UserBasicInfo>变成了可以异步获得的。</li>
+<li>第11行指定了获取Mono时失败的时候的返回值</li>
+<li>第14行指定了发生异常时需要对异常做如何消费并兜底</li>
+</ol>
+</li>
+</ol>
+<p>zip方法提供了横向组合多个生产者的功能，配合doOnNext可以优雅&amp;高效的构造出一个复杂的pipeline。</p>
+<h2 id="响应式编程的高阶用法">响应式编程的高阶用法</h2>
+<h3 id="如何短路">如何短路？</h3>
+<p>这里我们创造一个更复杂一点的场景——实现fail-fast/短路</p>
+<ol>
+<li>查询基本信息接口响应时间变为1s，查询兴趣列表响应时间不变，仍为2s</li>
+</ol>
+<p>这里举个例子，在实际编码过程中，我们并不会因为接口的相应时间不同，而采取不同的编码策略。</p>
+<ol>
+<li>需要对返回值进行校验，如果任一校验为true，则可以直接返回结果，即判断过程可被短路。</li>
+</ol>
+<p>假如我们用当前常用的CompletableFuture来实现，大家通常会像并发例子中那样并发执行两个接口，获取返回值进行判断，这样实现的接口耗时为2s左右。<br>
+对于实现fail-fast来说，使用CompletableFuture的编码复杂度过于高了，但交给webflux，这仍不是一个难题。<br>
+[图片]<br>
+可以看到，即使我们将执行时间较长的查询兴趣列表的任务声明在前（事实上也是先执行的），但是仍然可以在更快的接口拿到返回值时直接完成整个接口。any方法可以实现多个生产者的短路。<br>
+当我们将执行较短的方法声明在前，执行结果如下（事实上也是先执行的）<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908214-7e45ce62-13f1-4efc-8242-1a82bbe3ee2e.png#averageHue=%23312f2e&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u954bbe1f&amp;originHeight=91&amp;originWidth=820&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u0d114082-2ca7-43b4-9fe6-93e5e1a4b4c&amp;title=" alt="" loading="lazy"><br>
+可以发现在书写代码时，并不需要考虑两个接口谁的性能更好<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908448-aa21cb4f-c8b7-48c6-95ab-23989ee4683f.png#averageHue=%23312f2e&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=ub5f713a6&amp;originHeight=87&amp;originWidth=810&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u41efda58-f20c-4f3d-90a0-b4b43fab59a&amp;title=" alt="" loading="lazy"><br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718773908379-11599e9e-5244-4074-98ac-d07558dd3ed0.png#averageHue=%232d2c2b&amp;clientId=u8301e92a-70a5-4&amp;from=paste&amp;id=u4449a484&amp;originHeight=249&amp;originWidth=518&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u87866d73-9522-408e-8b44-f208558eebf&amp;title=" alt="" loading="lazy"></p>
+<hr>
+<p>webflux拥有非常多的api，组合这些可以实现诸多复杂场景，这里不做过多举例，大家感兴趣可以自行了解。<br>
+接下来带大家了解其中比较重要的概念——hot vs cold<br>
+更多的官方资料可见<a href="https://projectreactor.io/docs/core/release/reference/#advanced">点击跳转</a>。</p>
+<h3 id="可消费次数">可消费次数</h3>
+<p>Stream只能被消费一次，但Flux可以是热的，也可以是冷的<br>
+这里我曾经疑惑，为什么对于返回单个对象的时候用Optional包裹是好的实现，而返回集合对象的时候不用Stream来代替呢？<br>
+实际上Stream只会被消费一次的特点某种意义上解答了这个问题，如果返回的是stream，那么我们必须立刻消费它，不然一旦被其他地方重复消费就会产生bug。<br>
+而Mono和Flux，既可以是hot的，也可以是cold。<br>
+这里是官方提供的概念，所谓的hot，即每次消费都会让发布者重新执行生产动作。cold，即每次消费发布者只会生产一次。<br>
+发布者的冷与热是可以相互转换的。默认是hot的，但是可以通过defer方法转换为冷的，反之，可以通过share方法转换为热的。<br>
+这个特点可以解决我们编写代码时需要考虑外部IO而带来的编码妥协——当一次外部IO比较高时，我们需要预先查询出来，作为参数传递给使用者，造成一些编码障碍，参数使用方也需要考虑代码顺序。</p>
+<h1 id="总结">总结</h1>
+<p>回到一开始的问题</p>
+<ol>
+<li>什么是响应式编程？</li>
+</ol>
+<p>如果要教科书上的答案，那么答案如下，这也是很多文章中一定会复制来的一段话<br>
+一种面向数据串流和变化传播的声明式编程范式。 这意味着可以在编程语言中很方便地表达静态或动态的数据流，而相关的计算模型会自动将变化的值通过数据流进行传播。<br>
+但实际上，用通俗的话讲，就是我们可以将程序类比成流水线——我们只需要构建好一条支持静态或动态流水线，静静的等待每个生产原料（http请求）到来即可，构建这个流水线的编程范式，即为响应式编程。</p>
+<ol>
+<li>响应式编程的优点在哪里？
+<ol>
+<li>优雅的编码——更简单、可组合和可读的非阻塞代码</li>
+<li>非常方便的良好错误处理和重试机制</li>
+<li>以更少的硬件资源处理更多的请求，增加接口的响应速度，提升系统的吞吐量</li>
+<li>可组装，可延迟执行，可重用</li>
+</ol>
+</li>
+</ol>
+<p>注：还有一个本文没有提及的高级特性：<br>
+Backpressure（背压）<br>
+描述的是在流水线中会发生的一种场景：某些异步的阶段处理速度跟不上，需要告诉上游生产者放慢速度。直接失败是不可接受的，因为会丢失太多数据。</p>
+<ol>
+<li>响应式编程的缺点:
+<ol>
+<li>上手成本比较高——响应式编程需要有较好的编程基础，至少需要熟练掌握java8的新特性以及函数式编程。</li>
+<li>需要新一些的底层依赖——至少Java8及Spring5，对于很多历史项目升级比较困难</li>
+<li>发布时间相对较短，中文文档比较少，目前提供出来的实际落地的业务最佳实践很少</li>
+</ol>
+</li>
+</ol>
+<h1 id="附言">附言</h1>
+<p><a href="https://projectreactor.io/docs/core/release/reference/#null-safety">Spring 5.0 是 2017 年 9 月 28 日发布的</a>，距今已将近六年，不过目前关于响应式编程的国内相关文档并不多，相关闻名的成功实践也相对较少。<br>
+期待响应式编程犹如雨后春笋的一天。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[知识杂记]]></title>
+        <id>https://esencool.github.io/post/zhi-shi-za-ji/</id>
+        <link href="https://esencool.github.io/post/zhi-shi-za-ji/">
+        </link>
+        <updated>2024-06-17T08:18:17.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="知识杂记">知识杂记</h1>
+<h2 id="分布式">分布式</h2>
+<h3 id="cap">CAP</h3>
+<p>C:Consistency（强一致性）<br>
+A:Availability（可用性）<br>
+P:Partition tolerance（分区容错性）</p>
+<ul>
+<li>CA - 单点集群，满足一致性，可用性的系统，通常在可扩展性上不太强大。</li>
+<li>CP - 满足一致性，分区容忍必的系统，通常性能不是特别高。</li>
+<li>AP - 满足可用性，分区容忍性的系统，通常可能对一致性要求低一些。</li>
+</ul>
+<h3 id="base定理">BASE定理</h3>
+<p>BASE就是为了解决关系数据库强一致性引起的问题而引起的可用性降低而提出的解决方案。</p>
+<p>BASE其实是下面三个术语的缩写：</p>
+<ul>
+<li>基本可用（Basically Available）</li>
+<li>软状态（Soft state）</li>
+<li>最终一致（Eventually consistent）</li>
+</ul>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[分布式一致性]]></title>
+        <id>https://esencool.github.io/post/fen-bu-shi-yi-zhi-xing/</id>
+        <link href="https://esencool.github.io/post/fen-bu-shi-yi-zhi-xing/">
+        </link>
+        <updated>2024-06-13T06:43:26.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="分布式一致性">分布式一致性</h1>
+<h2 id="base理论">BASE理论</h2>
+<ol>
+<li><strong>基本可用(Basic Available )：</strong> 分布式系统在出现故障的时候，允许损失部分可用性，但需要保证核心功能可用；</li>
+<li><strong>柔性状态(Soft State)：</strong> 同一数据的不同副本的状态，可以不需要实时一致。</li>
+<li><strong>最终一致性(Eventual Consisstency)：</strong> 同一数据的不同副本的状态，可以不需要实时一致，但一定要保证经过一定时间提交后最终是一致的。</li>
+</ol>
+<h2 id="常见分布式事务选型">常见分布式事务选型</h2>
+<p>事务协调器（TC）：维护全局和分支事务的状态，驱动全局的提交或回滚。<br>
+事务管理器（TM）：定义全局事务的范围：开始全局事务、提交或回滚全局事务。<br>
+资源管理器(RM)：管理分支事务处理的资源，与TC通信以注册分支事务并报告分支事务的状态，并驱动分支事务的提交或回滚。</p>
+<h3 id="xa">XA</h3>
+<p>存储层实现两阶段提交协议，将事务的提交过程分为资源准备与资源提交两个阶段 prepare -&gt; commit</p>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点：通过本地事务+事务管理器的协调实现ACID，对业务代码无侵入。由于全程开启本地事务，所以分布式执行过程中数据都是强一致性的</li>
+<li>缺点：全程开启本地事务也带来性能低下的劣势，同时事务管理器非常重要，有单点问题，一旦发生故障，资源可能一直锁定无法释放。事务参与者如果在第二阶段出错，也会出现最终不一致的问题</li>
+</ul>
+<p>这是CAP中优先选择CP的方案，不满足大多数业务的诉求</p>
+<h3 id="tcc">TCC</h3>
+<p>TCC是Try、Confirm、Cancel的缩写，TCC事务需要业务方（即事务参与者）提供Try、Confirm、Cancel三个能力</p>
+<ul>
+<li>Try：完成业务检查，预留业务所需的资源。Try操作是整个TCC的精髓，可以灵活选择业务资源锁的粒度。</li>
+<li>Confirm：执行业务逻辑，直接使用Try阶段预留的业务资源，无须再次进行业务检查。</li>
+<li>Cancel：释放Try阶段预留的业务资源。</li>
+</ul>
+<p>TCC可以认为是应用层的两阶段提交，第一阶段是Try，第二阶段根据Try的结果决定执行Confirm还是Cancel：如果所有参与者都Try成功，则提交事务，调每个参与者Confirm接口，反之调每个参与者Cancel接口回滚事务<br>
+其中confirm与cancel默认是不会是失败的，这是保证一致性的基础。如果失败需要有补偿机制</p>
+<p><strong>设计TCC框架的注意事项</strong></p>
+<ol>
+<li>幂等控制</li>
+</ol>
+<p>由上文可知，TCC三个操作需要保证可重试，因此需要做好幂等控制</p>
+<ol start="2">
+<li>允许空回滚</li>
+</ol>
+<p>当Try调用超时或丢包，会触发事务回滚，事务管理器会调用Cancel。此时事务参与者可能尚未收到Try请求，却先收到Cancel请求，因此需要Cancel接口在实现时允许空回滚，返回回滚成功，让事务管理器认为已回滚</p>
+<ol start="3">
+<li>防悬挂控制</li>
+</ol>
+<p>在空回滚的场景下，若事务参与者已经执行完了Cancel，接着收到了Try请求，如果不将该请求拒绝，则会产生数据不一致，这就是『悬挂问题』，因此需要在Try操作执行前，先检查该事务是否已经被标记为回滚成功</p>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点
+<ul>
+<li>资源锁定由具体业务实现，锁定粒度可以更小、更灵活，可以带来性能的提升</li>
+<li>由业务方来控制整个业务活动，事务参与者可以引入集群，避免单点问题</li>
+</ul>
+</li>
+<li>缺点
+<ul>
+<li>Try、Confirm、Cancel是按照具体业务来实现，业务耦合度比较高</li>
+</ul>
+</li>
+</ul>
+<h3 id="saga">SAGA</h3>
+<p>SAGA事务核心思想是将长事务拆分为多个本地短事务并依次正常提交，如果所有短事务均执行成功，那么分布式事务提交；如果出现某个参与者执行本地事务失败，分两种恢复策略，第一种「正向恢复」，对失败节点进行重试，尽最大努力正向推进，第二种「反向恢复」，反向调用每个节点补偿操作，如果失败，重试直至成功</p>
+<p>SAGA由两部分操作组成：</p>
+<ul>
+<li>正向操作：将大事务拆分成若干个小事务，将整个分布式事务T分解为n个正向子事务，命名为T1，T2，...，Ti，...，Tn。</li>
+<li>补偿操作：为每一个子事务设计对应的补偿动作，命名为C1，C2，...，Ci，...，Cn。</li>
+</ul>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点：无资源锁定，可以带来较高的吞吐，系统可用性较好，同时对业务侵入适中</li>
+<li>缺点：不保证隔离性，有更新丢失、脏读等问题，需要业务层控制并发</li>
+</ul>
+<h3 id="本地消息表">本地消息表</h3>
+<p>本地消息表的方案中主要有两种角色：事务主动方和事务被动方，事务主动方在本地事务中完成业务处理和事务消息记录，事务被动方消费事务消息，完成自己的业务处理</p>
+<p><strong>优缺点</strong></p>
+<ul>
+<li>优点：方案轻量容易实现</li>
+<li>缺点：事务支持不完备，基于本地消息的后续逻辑只能重试不能回滚/补偿，缺乏完整的后续编排和调度。消息服务的性能也会受到DB性能的影响</li>
+</ul>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Redis]]></title>
+        <id>https://esencool.github.io/post/huan-cun/</id>
+        <link href="https://esencool.github.io/post/huan-cun/">
+        </link>
+        <updated>2024-06-12T05:56:07.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="redis">Redis</h1>
+<h2 id="存储类型">存储类型</h2>
+<h3 id="字符串">字符串</h3>
+<p>存在<code>GETSET</code>命令保障原子性的putIfAbsent<br>
+<code>SETNX</code>用于加锁操作<br>
+实用场景：缓存、锁、自增id生成器、全局计数器、限速器<br>
+实现：SDS 简单动态字符串，相比C++自带的库更紧密<br>
+键的自动过期，保障服务端挂掉后锁的释放<br>
+1. 惰性删除：访问键时过期执行删除操作<br>
+2. 定期删除：周期性抽取部分键检测过期时间进行删除</p>
+<h3 id="散列hash">散列Hash</h3>
+<p>基本场景：短网址映射、图数据存储、计数器<br>
+实现：压缩列表、哈希表<br>
+资源占用更少一些，操作丰富度更小，过期时间不如字符串</p>
+<h3 id="列表-list">列表 list</h3>
+<p>基本场景： 先进先出队列、秒杀、分页、带可阻塞的消息队列</p>
+<h3 id="集合-set">集合 set</h3>
+<p>保证元素不重复<br>
+基本场景： 唯一计数器、打标签、点赞、投票、抽奖、共同关注/推荐关注<br>
+实现：整数数组、哈希表</p>
+<h3 id="有序集合-sorted_set">有序集合 sorted_set</h3>
+<p>元素不重复且有序<br>
+基本场景：排行榜、时间线、商品推荐<br>
+实现：压缩列表、跳表</p>
+<h3 id="位图-bitmap">位图 bitmap</h3>
+<p>压缩存储</p>
+<h2 id="数据结构">数据结构</h2>
+<h3 id="sds-简单动态字符串">SDS 简单动态字符串</h3>
+<ol>
+<li>struct标记为packed，不进行结构体对其，以紧凑形式存在</li>
+<li>O(1)获取字符串长度</li>
+<li>解决缓冲区溢出的问题</li>
+<li>减少修改字符串带来的内存重新分配问题，提升性能</li>
+<li>空间预先分配，惰性释放</li>
+</ol>
+<h3 id="跳表-skiplist">跳表 skipList</h3>
+<p><img src="https://esencool.github.io//post-images/1718177853986.png" alt="跳表" loading="lazy"><br>
+找到前驱-&gt; 保存 -&gt; 指针调整。随机调整层高<br>
+有理论上<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>(</mo><mi>l</mi><mi>o</mi><mi>g</mi><mi>n</mi><mo>)</mo></mrow><annotation encoding="application/x-tex">O(logn)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">o</span><span class="mord mathdefault" style="margin-right:0.03588em;">g</span><span class="mord mathdefault">n</span><span class="mclose">)</span></span></span></span>的查询速度。由于数据都在内存中，效果比叶子节点庞大的B+树效果好<br>
+<strong>与B+树的差异：</strong></p>
+<ol>
+<li>结构差异：B+ 树是一种多路搜索树，每个节点可以有多个子节点，而跳表是一种基于链表的数据结构，每个节点只有一个下一个节点，但可以有多个快速通道指向后面的节点。</li>
+<li>空间利用率：B+ 树的磁盘读写操作是以页（通常是 4KB）为单位的，每个节点存储多个键值对，可以更好地利用磁盘空间，减少 I/O 操作。而跳表的空间利用率相对较低。</li>
+<li>插入和删除操作：跳表的插入和删除操作相对简单，时间复杂度为 O(logN)，并且不需要像 B+ 树那样进行复杂的节点分裂和合并操作。</li>
+<li>范围查询：B+ 树的所有叶子节点形成了一个有序链表，因此非常适合进行范围查询。而跳表虽然也可以进行范围查询，但效率相对较低。</li>
+</ol>
+<p>因此，B+ 树和跳表不能简单地相互替换。在需要大量进行磁盘 I/O 操作和范围查询的场景（如数据库索引）中，B+ 树可能是更好的选择。而在主要进行内存操作，且需要频繁进行插入和删除操作的场景（如 Redis）中，跳表可能更有优势。<br>
+Redis 的 ZSet 为什么使用跳表而不是B+树</p>
+<p>Redis 是内存存储，不存在 IO 的瓶颈，所以跳表的层数的耗时可以忽略不计，而且插入数据时不需要开销以平衡数据结构（写多）。</p>
+<h3 id="ziplist">zipList</h3>
+<p>可参考：https://juejin.cn/post/6914456200650162189<br>
+当元素较少时使用。</p>
+<h3 id="zset">zset</h3>
+<p>可参考：https://juejin.cn/post/7009942104176590884<br>
+等价于java的TresSet + hashMap</p>
+<h3 id="哈希">哈希</h3>
+<p>主要解决了扩容下rehash的问题：</p>
+<h2 id="附加功能">附加功能</h2>
+<h3 id="渐进式rehash">渐进式rehash</h3>
+<ul>
+<li>为ht[1]分配空间，让字典同时持有ht[0]和ht[1]两个哈希表</li>
+<li>维持索引计数器变量rehashidx，并将它的值设置为0，表示rehash开始</li>
+<li>每次对字典执行增删改查时，将ht[0]的rehashidx索引上的所有键值对rehash到ht[1]，将rehashidx值+1。</li>
+<li>当ht[0]的所有键值对都被rehash到ht[1]中，程序将rehashidx的值设置为-1，表示rehash操作完成</li>
+</ul>
+<h3 id="数据库管理">数据库管理</h3>
+<ol>
+<li>keys 会拿出所有key，有内存风险</li>
+</ol>
+<h3 id="流水线与事务">流水线与事务</h3>
+<ol>
+<li>客户端pipline()方法</li>
+<li>不支持回滚，不具备ACI，有条件的D</li>
+<li>发布订阅 websocket的横向拓展</li>
+<li>lua脚本，会作为原子执行，解决轻量级事务</li>
+<li>持久化</li>
+</ol>
+<h2 id="持久化">持久化</h2>
+<h3 id="rdb快照内存快照">RDB快照（内存快照）</h3>
+<ol>
+<li>对全量数据做快照<br>
+<code>SAVE</code>在主线程执行,<code>BGSAVE</code>异步执行</li>
+<li>能否同步做修改？<br>
+可以，写时复制实现。</li>
+<li>为了保障数据不丢失，会比较频繁的使用<code>BGSAVE</code>，这会导致内存压力较大</li>
+</ol>
+<h3 id="aof-日志">AOF 日志</h3>
+<p>AOF 增量日志，将日志缓冲文件根据策略写回磁盘<br>
+写回磁盘时会阻塞主线程<br>
+always策略：实时写回<br>
+everysec：每秒写回<br>
+no：操作系统选择写回</p>
+<h2 id="高可用">高可用</h2>
+<h3 id="主从复制">主从复制</h3>
+<p><img src="https://esencool.github.io//post-images/1718174203746.png" alt="主从复制" loading="lazy"><br>
+一主一从，一主多从适合读多写少的常见，避免慢查询对主节点的阻塞。</p>
+<h4 id="操作逻辑">操作逻辑</h4>
+<pre><code>读可以读主库和从库
+写操作只操作主库
+1. 初次链接全量同步
+主库不阻塞，从库从零初始化数据
+2. 增量同步
+维护长链接，不断的将数据发送至从服务器
+3. 断连场景
+2.8 之前如果发生了断链回全量同步
+2.8 后使用FIFO队列同步更新，记录更新的offset，将间隔内的offset进行同步
+</code></pre>
+<h4 id="缺点">缺点</h4>
+<ol>
+<li>主节点挂掉后需要手动切换从节点</li>
+<li>储存容量收到带宽限制</li>
+<li>异步写入无法保证强一致</li>
+</ol>
+<h3 id="哨兵机制">哨兵机制</h3>
+<figure data-type="image" tabindex="1"><img src="https://esencool.github.io//post-images/1718174506777.png" alt="哨兵机制" loading="lazy"></figure>
+<h4 id="监控">监控</h4>
+<p>向从库发送ping命令，判断是否需要下线<br>
+单个哨兵节点判断为主观下线，多个哨兵节点投票确定为客观下线</p>
+<h4 id="选主">选主</h4>
+<p>筛选-打分</p>
+<h3 id="redis-cluster-架构">Redis Cluster 架构</h3>
+<p>采用无中心架构，每个节点保存数据和整个集群的状态，每个节点都与其他节点连接。<br>
+按照规则对数据进行分片，分别存储在不同的主节点上，每个主节点有从节点备份。</p>
+<h2 id="应用与实践">应用与实践</h2>
+<h3 id="缓存雪崩">缓存雪崩</h3>
+<ol>
+<li>什么是缓存雪崩<br>
+缓存中有大量数据同时命中
+<ol>
+<li>过期时间加一个随机的值，避免同时失效</li>
+<li>合适的限流</li>
+<li>提前预热，提前续租</li>
+</ol>
+</li>
+<li>缓存击穿<br>
+热点key过期<br>
+提前续期</li>
+<li>缓存穿透<br>
+业务误操作，恶意攻击
+<ol>
+<li>保存空值或缺省值</li>
+<li>过滤器判断数据是否存在</li>
+<li>在请求入口做完备检测</li>
+</ol>
+</li>
+</ol>
+<h2 id="缓存规范">缓存规范</h2>
+<ol>
+<li>命名：可读性，可管理性</li>
+<li>合适的数据结构&amp;避免大key（value大）：删除&amp;自动过期时会导致阻塞，带宽限制
+<ol>
+<li>只储存有需要的字段</li>
+<li>使用压缩算法</li>
+<li>拆分key</li>
+<li>有限次重试</li>
+</ol>
+</li>
+<li></li>
+<li>控制key的生命周期</li>
+<li>关注<code>O(n)</code>的命令</li>
+<li>缓存的预热</li>
+</ol>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[caffine]]></title>
+        <id>https://esencool.github.io/post/huan-cun-suan-fa/</id>
+        <link href="https://esencool.github.io/post/huan-cun-suan-fa/">
+        </link>
+        <updated>2024-06-12T03:45:31.000Z</updated>
+        <content type="html"><![CDATA[<p><a href="https://github.com/ben-manes/caffeine">Caffine GitHub地址</a></p>
+<h1 id="缓存命中率算法">缓存命中率算法</h1>
+<h2 id="lru算法">LRU算法</h2>
+<p>LRU全称为Least Recently Used，最近最少使用淘汰算法<br>
+核心思想是：如果数据最近被访问过，那么将来被访问的几率也更高（局部性原理中的时间局部性）<br>
+简单描述：每次淘汰链表尾部的缓存，如果缓存被访问过，放置到链表头部<br>
+暂时无法在飞书文档外展示此内容<br>
+在上图中使用单向链表表示链表的头尾，但在实现中使用的是双向链表<br>
+实现结构：至少需要一个HashMap和双向链表</p>
+<ol>
+<li>HashMap用于<code>O(1)</code>判断是否缓存存在&amp;找到缓存的位置</li>
+<li>双向链表用于<code>O(1)</code>找到缓存的前后节点，快速连接两个节点</li>
+</ol>
+<p>实际上可以直接使用jdk的LinkedHashMap，重写removeEldestEntry()方法即可，可以参考<br>
+<a href="https://github.com/apache/dubbo/blob/7a48fac84b14ac6a21c1bdfc5958705dd8dda84d/dubbo-common/src/main/java/org/apache/dubbo/common/utils/LRUCache.java#L23">apache/dubbo中的LRUCache实现</a><br>
+LRU的缺点：</p>
+<ol>
+<li>LRU如果想要达到比较好的缓存命中率，需要较大的内存占用。</li>
+<li>对于周期流量进入缓存，淘汰周期比较久，会污染维护的访问记录</li>
+</ol>
+<h2 id="lfu算法">LFU算法</h2>
+<p>Least Frequently Used 最近最常使用<br>
+实现方式是基于LRU算法，维护每个缓存的访问次数，链表中的顺序按照访问次数排列，每次删除访问次数最少的。<br>
+由于排序操作是比较耗费时间的，缓存算法必须要具有优秀的时间复杂度，所以LFU算法会使用2个HashMap和n个链表<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149890-fc614c55-8a34-4e7b-b8b7-f42d22eb3416.png#averageHue=%23504a43&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u01017f58&amp;originHeight=731&amp;originWidth=891&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u465d79ea-6295-4dfc-a599-ccc2ff7915f&amp;title=" alt="" loading="lazy"><br>
+左侧蓝色的HashMap用于做缓存node的映射，用于<code>O(1</code>判断缓存是否存在，找到缓存的位置<br>
+上方绿色的HashMap用于做频率-&gt;双向链表的映射，用于<code>O(1</code>找到对应频率的双向链表位置<br>
+如何在绿色的HashMap中维护最小的频率key呢？可以使用优先队列作为辅助，时间复杂度为<code>O(logn</code>，这也是简单实现的LFU算法的理论复杂度最大的步骤，也是在十几年前LRU算法使用率比LFU更高的原因<br>
+注意：<code>O(logn)</code>的算法在实际使用中并不一定比<code>O(1)</code>算法慢<br>
+<a href="https://arxiv.org/pdf/2110.11602.pdf">O(1)时间复杂度实现LFU</a>论文中提供了一种时间复杂度为<code>O(1)</code>的实现方式</p>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149802-d1ff143f-4812-4671-a155-462d3ef0998f.png#averageHue=%23eeeeee&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u63929e74&amp;originHeight=182&amp;originWidth=420&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ue24b78fd-77bd-445b-b7d9-3387db96959&amp;title=" alt="" loading="lazy"><br>
+访问缓存z前<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149988-8b11815b-b702-49b0-b1e8-07474b9fd20c.png#averageHue=%23f1f1f1&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u0e025ee0&amp;originHeight=233&amp;originWidth=499&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u6db703f0-3f64-4ada-b4df-f95e8ed80fb&amp;title=" alt="" loading="lazy"><br>
+访问缓存z后<br>
+根据论文中的插图，使用有序双向链表来代替了上图中绿色的HashMap<br>
+LFU有以下两个缺点：</p>
+<ol>
+<li>需要维护频率信息，每次访问都需要更新，维护的成本比较高。</li>
+<li>缓存实际上与时间有关，有些早先访问频率高的缓存很难被剔除</li>
+</ol>
+<h2 id="tinylfu"><a href="https://arxiv.org/pdf/1512.00727.pdf">TinyLFU</a></h2>
+<p>论文地址：<a href="https://arxiv.org/pdf/1512.00727.pdf">https://arxiv.org/pdf/1512.00727.pdf</a><br>
+参考翻译：https://www.qin.news/tinylfu/<br>
+TinyLFU是对LFU算法的优化版本，保证了算法的理论，但是用牺牲一部分准确性的方式换来了更高的性能<br>
+在学习tinyLFU之前需要了解两个知识点：</p>
+<h3 id="布隆过滤器-bloom-filter"><a href="https://dl.acm.org/doi/pdf/10.1145/362686.362692">布隆过滤器 Bloom Filter</a></h3>
+<p>布隆过滤器是一个ACM领域常见的知识点，由Burton Howard Bloom在1970年提出的，用于检索一个元素是否在一个集合中。它的优点是空间效率和查询时间都远远超过一般的算法，缺点是有一定的误识别率和删除困难。<br>
+判断一个元素是否在集合中，常见的是使用Set，最低的时间复杂度为<code>O(1)</code>的HashSet<br>
+HashSet的底层是HashMap<br>
+布隆过滤器提供了一个牺牲一定准确性的高效方式：<br>
+布隆过滤器的底层是一个位数组 bit array</p>
+<ol>
+<li>开始，数组集合为空，位数组的所有位都为0</li>
+<li>元素插入时，用k个哈希函数计算对应的Hash值，对k个结果按数组长度取余数，将对应位置设置为1</li>
+<li>当元素查询时，计算k个hash值，并取余数，如果对应位置都为1，则元素可能存在于数组中，如果有一个结果不为1，则元素一定不在数组中。</li>
+</ol>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164149995-c9adac41-d603-4cb2-8a51-2a186d751d3d.png#averageHue=%23f3f3f3&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u147896ed&amp;originHeight=482&amp;originWidth=783&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ud0d9191c-4e78-4a44-9c4b-c2d751dd306&amp;title=" alt="" loading="lazy"><br>
+由原理可知，布隆过滤器不需要存储元素本身，占用的内存空间极小，在1%误差时，平均每个元素占用的内存小于16bit。算法复杂度是常数时间，即<code>O(1)</code></p>
+<h3 id="cm-sketch"><a href="https://bytedance.feishu.cn/docx/GVPmdfX6joL2ldx4WS2cUKbVnMb#part-IqGddkou1o31xLxNtPSchtyUnfc">CM-Sketch</a></h3>
+<p>在了解Bloom Filter之后，对于CM-Sketch的理解就相对容易，可以看作是用来求元素在集合中数量的布隆过滤器。<br>
+CM-Sketch的结构可以近似为一个二维数组，有d个不同的哈希函数，即<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>h</mi><mi>i</mi></msub><mo>(</mo><mo>)</mo></mrow><annotation encoding="application/x-tex">h_{i}()</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">h</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mclose">)</span></span></span></span>。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150110-86dfe703-6e04-4a55-a573-5dfb305fc163.png#averageHue=%23282828&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u2a8f92b3&amp;originHeight=350&amp;originWidth=733&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ua7e1a77e-f0dc-48cc-bbda-74ea219c3c7&amp;title=" alt="" loading="lazy"><br>
+当元素加入集合中时，对于每一行都用哈希函数来将对应位置+1<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150421-3b24e636-fa2f-4023-8581-f43e5284a2bf.png#averageHue=%23272727&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u8fff1d64&amp;originHeight=330&amp;originWidth=698&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u443efa8e-dae0-4b7a-8ab5-8568b3c5c6f&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150558-848eb6f4-9d1a-43dd-98f7-b36860865eb8.png#averageHue=%23272727&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u65cd30ca&amp;originHeight=337&amp;originWidth=690&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=ucb973090-e940-4fee-867a-91ac7428216&amp;title=" alt="" loading="lazy"><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150587-c88eae3d-5631-4fca-8001-512385e2a2e7.png#averageHue=%23272727&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u7c39e7a8&amp;originHeight=343&amp;originWidth=691&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=uda258e70-a6eb-4161-9f71-60987a33911&amp;title=" alt="" loading="lazy"><br>
+元素a到达<br>
+元素a到达第二次<br>
+元素b到达<br>
+在查询元素出现了多少次时，取对应散列值的最小值，例如此时对于元素a来说，出现次数为<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>m</mi><mi>i</mi><mi>n</mi><mo>(</mo><mn>2</mn><mo separator="true">,</mo><mn>3</mn><mo separator="true">,</mo><mn>2</mn><mo>)</mo><mo>=</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">min(2,3,2)=2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">m</span><span class="mord mathdefault">i</span><span class="mord mathdefault">n</span><span class="mopen">(</span><span class="mord">2</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">3</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">2</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span></span></span></span>次<br>
+同样的，CM-SKetch和布隆过滤器有相同的特点，容忍一定误差，但是效率极高，空间占用率非常低。</p>
+<h3 id="tinylfu实现方式">TinyLFU实现方式</h3>
+<p>当我们引出布隆过滤器和CM-Sketch之后，我们大致就能猜出TinyLFU的实现思想了。<br>
+相对于LFU的精确访问频率计算，TinyLFU用一个高效的方式去逼近这个结果。<br>
+但TinyLFU还有一些缺点：</p>
+<ol>
+<li>无法应对稀疏流量：稀疏流量没有建立足够的频率，就被淘汰了。</li>
+<li>早期经常访问的缓存会赖着不淘汰，一直占据坑位。</li>
+</ol>
+<h1 id="caffiene的优化">Caffiene的优化</h1>
+<h2 id="更容易计算的访问频率">更容易计算的访问频率</h2>
+<p>相对于LFU维护了元素的访问次数，很多时候我们并不一定需要严格，精确的访问次数，使用有一定容忍度的误差值也是能够很好的满足使用场景，因此使用CM-Sketch可以变向替代需要的「访问频率」。<br>
+在Caffeine中，维护了一个4bits的CM-Sketch来记录频率，具体可见FrequencySketch这个类。由于4bits的内存能记录的最大频率为<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mo>&lt;</mo><mo>&lt;</mo><mn>4</mn><mo>−</mo><mn>1</mn><mo>=</mo><mn>15</mn></mrow><annotation encoding="application/x-tex">2&lt;&lt;4-1=15</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68354em;vertical-align:-0.0391em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">&lt;</span></span><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mrel">&lt;</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">5</span></span></span></span>，高频缓存触发几率显然要高于这个值，这就需要一个更新机制了</p>
+<h2 id="更新机制">更新机制</h2>
+<p>为了解决数据访问模式随时间变化的问题，也为了避免计数无限增长，采用了一种基于滑动窗口的时间衰减设计机制，借助于一种简易的 reset 操作：每次添加一条记录到 Sketch 的时候，都会给一个计数器上加 1，当计数器达到一个尺寸 W 的时候，把所有记录的 Sketch 数值都除以 2<br>
+该 reset 操作可以起到频次衰减的作用，让早期经常访问的缓存也进入决斗场，输者离席。<br>
+论文3.3.1中进行了数学证明，表明这种更新机制的命中期望是影响比较小的。<br>
+个人碎碎念：这个还是很厉害的，很多LFU算法使用int来记录访问频次，这就需要32bit，相比于TinyLFU耗费了8倍内存。</p>
+<pre><code class="language-java">public void increment(@NonNull E e) {
+    if (isNotInitialized()) {
+        return;
+    }
+
+    int hash = spread(e.hashCode());
+    int start = (hash &amp; 3) &lt;&lt; 2;
+
+    // Loop unrolling improves throughput by 5m ops/s
+    int index0 = indexOf(hash, 0);
+    int index1 = indexOf(hash, 1);
+    int index2 = indexOf(hash, 2);
+    int index3 = indexOf(hash, 3);
+
+    boolean added = incrementAt(index0, start);
+    added |= incrementAt(index1, start + 1);
+    added |= incrementAt(index2, start + 2);
+    added |= incrementAt(index3, start + 3);
+
+    if (added &amp;&amp; (++size == sampleSize)) {
+        reset();
+    }
+}
+</code></pre>
+<p>频率+1 源码</p>
+<pre><code class="language-java">boolean incrementAt(int i, int j) {
+    int offset = j &lt;&lt; 2;
+    long mask = (0xfL &lt;&lt; offset);
+    if ((table[i] &amp; mask) != mask) {
+        table[i] += (1L &lt;&lt; offset);
+        return true;
+    }
+    return false;
+}
+</code></pre>
+<p>频率+1 源码</p>
+<pre><code class="language-java">void reset() {
+    int count = 0;
+    for (int i = 0; i &lt; table.length; i++) {
+        count += Long.bitCount(table[i] &amp; ONE_MASK);
+        table[i] = (table[i] &gt;&gt;&gt; 1) &amp; RESET_MASK;
+    }
+    size = (size &gt;&gt;&gt; 1) - (count &gt;&gt;&gt; 2);
+}
+</code></pre>
+<p>更新机制源码<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718164150568-fd06868c-6323-4a9e-b3b9-b06d55b8aeb5.png#averageHue=%23f8f8f8&amp;clientId=uaa3ee98b-0e38-4&amp;from=paste&amp;id=u5766ef6b&amp;originHeight=221&amp;originWidth=489&amp;originalType=url&amp;ratio=2&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u463ec295-b567-4bae-b4c0-64e465d45db&amp;title=" alt="" loading="lazy"></p>
+<h2 id="window-cache">Window Cache</h2>
+<p>使用Window Cache来应对突发性的系数访问。Window Cache的实际总缓存体积只占1%，内部采用分段LRU算法，用于保留突发性的访问，避免有些突发缓存会被一直淘汰的问题。<br>
+如果缓存被Window Cache淘汰，这时会进入到TinyLFU的流程。<br>
+这样稀疏流量会先停驻在Window Cache，被淘汰后才与LRU进行竞争。</p>
+<h2 id="main-cache">Main Cache</h2>
+<p>主缓存的总容量是99%，分为Candidate区和probation区，两者默认比例为8:2，会根据运行时数据动态调整。<br>
+简单来说</p>
+<ol>
+<li>所有的新数据都会进入Window Cache，这里是最安全的地方，就像双败赛制的胜者组，被淘汰了才会进入Main Cache进行PK</li>
+<li>进入Main Cache之后，会先进入probation区</li>
+<li>如果在probation区被访问到了，可以晋升到Candidate区，如果在probation区被淘汰，就出局了</li>
+<li>如果在Candidate区被淘汰，还可以回到probation区，回到第2步</li>
+</ol>
+<p>一个有趣的设计：</p>
+<ol>
+<li>在PK时，谁的频率低谁输，如果平局则</li>
+<li>如果你的频率为5，那么你输了，否则</li>
+<li>听天由命，随机淘汰一个</li>
+</ol>
+<p>这样回顾更新机制，早期热门key也一直伴随危险，15的频率如果减半只剩下了7，如果频率再变低（再次触发更新机制）或者遇到频率更高的对手就有可能被淘汰。</p>
+<pre><code class="language-java">boolean admit(K candidateKey, K victimKey) {
+    int victimFreq = frequencySketch().frequency(victimKey);
+    int candidateFreq = frequencySketch().frequency(candidateKey);
+    if (candidateFreq &gt; victimFreq) {
+        return true;
+    } else if (candidateFreq &lt;= 5) {
+        // The maximum frequency is 15 and halved to 7 after a reset to age the history. An attack
+        // exploits that a hot candidate is rejected in favor of a hot victim. The threshold of a warm
+        // candidate reduces the number of random acceptances to minimize the impact on the hit rate.
+        return false;
+    }
+    int random = ThreadLocalRandom.current().nextInt();
+    return ((random &amp; 127) == 0);
+}
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[垃圾回收算法]]></title>
+        <id>https://esencool.github.io/post/la-ji-hui-shou-suan-fa/</id>
+        <link href="https://esencool.github.io/post/la-ji-hui-shou-suan-fa/">
+        </link>
+        <updated>2024-06-12T03:40:57.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="算法的评价标准">算法的评价标准</h2>
+<h3 id="吞吐量">吞吐量</h3>
+<p>在单位时间内的处理能力。<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>r</mi><mi>e</mi><mi>s</mi><mi>u</mi><mi>l</mi><mi>t</mi><mo>=</mo><mi>H</mi><mi>E</mi><mi>A</mi><mi>P</mi><mi mathvariant="normal">_</mi><mi>S</mi><mi>I</mi><mi>Z</mi><mi>E</mi><mi mathvariant="normal">/</mi><mo>∑</mo><mi>G</mi><msub><mi>C</mi><mrow><mi>t</mi><mi>i</mi><mi>m</mi><mi>e</mi></mrow></msub></mrow><annotation encoding="application/x-tex">result = HEAP\_SIZE/\sum GC_{time}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mord mathdefault">e</span><span class="mord mathdefault">s</span><span class="mord mathdefault">u</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">t</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.06em;vertical-align:-0.31em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.05764em;">E</span><span class="mord mathdefault">A</span><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault" style="margin-right:0.05764em;">S</span><span class="mord mathdefault" style="margin-right:0.07847em;">I</span><span class="mord mathdefault" style="margin-right:0.07153em;">Z</span><span class="mord mathdefault" style="margin-right:0.05764em;">E</span><span class="mord">/</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-symbol small-op" style="position:relative;top:-0.0000050000000000050004em;">∑</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">G</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">e</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span><br>
+在计算吞吐量的时候，也需要考虑程序的运行状态。同一算法在不同的运行情况下吞吐量是不固定的。</p>
+<h3 id="最大暂停时间">最大暂停时间</h3>
+<p>字面意义<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>r</mi><mi>e</mi><mi>s</mi><mi>u</mi><mi>l</mi><mi>t</mi><mo>=</mo><mi>min</mi><mo>⁡</mo><mo>(</mo><mi>G</mi><msub><mi>C</mi><mrow><mi>t</mi><mi>i</mi><mi>m</mi><mi>e</mi></mrow></msub><mo>)</mo></mrow><annotation encoding="application/x-tex">result= \min(GC_{time})</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mord mathdefault">e</span><span class="mord mathdefault">s</span><span class="mord mathdefault">u</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">t</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mop">min</span><span class="mopen">(</span><span class="mord mathdefault">G</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">e</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span><br>
+较大的吞吐量与较短的最大暂停时间不可兼得。</p>
+<h3 id="堆使用效率">堆使用效率</h3>
+<p>可用的堆越大，GC运行越快。</p>
+<h3 id="访问的局部性">访问的局部性</h3>
+<p>内存对象具有访问局部性，把具有引用关系的对象安排在堆中较近的位置，能提高缓存的利用效率。</p>
+<h2 id="gc标记-清除算法">GC标记-清除算法</h2>
+<p>顾名思义，算法由两个阶段构成，分别为标记阶段与清除阶段。</p>
+<h3 id="标记阶段">标记阶段</h3>
+<p>标记根直接引用的对象。即递归的标记所有可达对象。</p>
+<blockquote>
+<p>根：对象指针的起点。再分配对象内存时，对象的指针会被根节点关联。被根引用的对象是活动对象，需要被保护。</p>
+</blockquote>
+<ol>
+<li>在标记时，需要处理循环情况，使用<code>set</code>避免死循环。</li>
+<li>在搜索时，使用的是DFS深度优先搜索，因为这样可以压低内存使用量。</li>
+</ol>
+<blockquote>
+<p>DFS内存使用取决于树的高度，BFS取决于叶子节点的数量。</p>
+</blockquote>
+<h3 id="清除阶段">清除阶段</h3>
+<p>便利整个堆，回收没有打上标记的对象。<br>
+花费的时间与堆的大小成正比，堆越大，话费的时间越长</p>
+<h4 id="分配">分配</h4>
+<ol>
+<li>first fit ：发现的第一个大于等于<code>size</code>的分块</li>
+<li>best-fit ： 遍历整个链表，返回大于等于<code>size</code>的最小分快</li>
+</ol>
+<p>从时间来讲，first fit更优。best fit 会让空闲列表更加紧凑</p>
+<h4 id="合并">合并</h4>
+<p>如果分块连续，则对其进行合并。</p>
+<h3 id="分析">分析</h3>
+<h4 id="优点">优点</h4>
+<p>简单，实现容易。更容易与其他算法相组合。<br>
+算法不移动对象，非常适合保守式的算法。</p>
+<h4 id="缺点">缺点</h4>
+<p>与文件系统相似，会逐渐产生内存碎片。对于应用程序的执行造成负担。</p>
+<h4 id="分配速度">分配速度</h4>
+<p>算法黄总分块是不连续的，每次分配都需要遍历空闲链表，找到足够大的分块，可能导致每次分配都需要线性时间。</p>
+<h4 id="与写时复制技术不兼容-copy-on-write">与写时复制技术不兼容 copy-on-write</h4>
+<p>在堆共享内存进行写入时，不能直接重写共享内存。如果其他程序访问，会发生数据不一致的情况。<br>
+标记清除算法会设置所有对象的标志位，会频繁发生复制情况。使用<a href="#ftq2e">bitmap markin</a>g方法解决。</p>
+<h4 id="使用多个空闲列表来优化分配">使用多个空闲列表来优化分配</h4>
+<p>程序通常会频繁申请分配小分快，因此可以使用多个空闲链表对齐进行预处理</p>
+<h4 id="bibopbig-bag-of-pages">BiBOP（Big Bag of Pages）</h4>
+<p><img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718007673350-84a79279-0454-4285-9ac9-e25d00c03e59.png#averageHue=%23f9f9f8&amp;clientId=u9ce8d5a0-8b7d-4&amp;from=paste&amp;height=342&amp;id=u86c03ff4&amp;originHeight=342&amp;originWidth=580&amp;originalType=binary&amp;ratio=1&amp;rotation=0&amp;showTitle=false&amp;size=46571&amp;status=done&amp;style=none&amp;taskId=u6c0c4fb5-1f09-4d6b-9282-760c2c222a2&amp;title=&amp;width=580" alt="image.png" loading="lazy"><br>
+并不能完全消除碎片化，如果多个块中分散残留着相同大小的对象，反而降低堆使用效率。</p>
+<h4 id="bitmap-marking">bitmap marking</h4>
+<ol>
+<li>为了避免频繁的写时复制，将存储于对象的标志位集中到bitmap中，由于bitmap很小，写时复制没有问题。</li>
+<li>对于清除阶段，可以避免遍历整个堆，只需要使用位运算快速的定位到需要被标记的对象。</li>
+</ol>
+<h4 id="延迟清除">延迟清除</h4>
+<h2 id="引用技术法-reference-counting">引用技术法 Reference Counting</h2>
+<h3 id="计数器">计数器</h3>
+<p>在内存管理时，会同时增减计数器的值。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1718008206659-c2a3532c-56c9-4e2e-adb8-f0d766f0925c.png#averageHue=%23f7f7f6&amp;clientId=u9ce8d5a0-8b7d-4&amp;from=paste&amp;height=206&amp;id=u535175a4&amp;originHeight=206&amp;originWidth=529&amp;originalType=binary&amp;ratio=1&amp;rotation=0&amp;showTitle=false&amp;size=35473&amp;status=done&amp;style=none&amp;taskId=ude28615a-ef05-44e9-9409-ec293b5a86d&amp;title=&amp;width=529" alt="image.png" loading="lazy"><br>
+在垃圾回收时，会将计数器为0的项与空闲链表链接。</p>
+<h3 id="分析-2">分析</h3>
+<h4 id="优点-2">优点</h4>
+<ol>
+<li>可以立刻回收对象，而不是分块用尽之后</li>
+<li>最大暂停时间短，在程序更新指针时才进行回收</li>
+<li>不必要递归查找</li>
+</ol>
+<h4 id="缺点-2">缺点</h4>
+<ol>
+<li>计算器的值增减十分复杂。</li>
+<li>计数器需要占据较大空间，如果是64位机器需要使用64位来存储计数器</li>
+<li>实现十分繁琐</li>
+<li>无法回收循环引用</li>
+</ol>
+<h3 id="改良">改良</h3>
+<h4 id="延迟引用计数">延迟引用计数</h4>
+<p>解决增减处理繁琐的问题，将计数为0的对象延迟回收，减轻每次根节点发生变化的负担。<br>
+但会导致垃圾的处理被延迟阻塞执行，会导致垃圾处理时间变长，降低了吞吐量，也失去了可立即回收的优点</p>
+<h4 id="sticky-引用计数法">sticky 引用计数法</h4>
+<p>上面提到如果64位机器需要使用64位来存储计数器，那么有什么办法节约这些空间吗？</p>
+<ol>
+<li>当计数器溢出的时候，什么都不做——就让他放着，因为这些场景很少。</li>
+<li>使用标记清除法做后援：
+<ol>
+<li>溢出后的对象使用标记清除算法进行释放，但这样会导致花更多时间，降低吞吐量</li>
+</ol>
+</li>
+</ol>
+<h4 id="1-bit-reference-counting">1 bit reference counting</h4>
+<p>简化标记变成1位，可以有效利用内存访问的局限性。<br>
+但没办法处理溢出场景</p>
+<h4 id="部分标记清除算法">部分标记清除算法</h4>
+<h2 id="gc复制算法">GC复制算法</h2>
+<h3 id="优点-3">优点</h3>
+<ol>
+<li>优秀的吞吐量：算法只搜索并复制活动对象，可以在较短时间完成GC</li>
+<li>可实现高速分配：不使用空闲链表，可以快速分配新的空间</li>
+<li>没有碎片化问题：活跃对象压缩至堆一端，无内存碎片的问题</li>
+<li>适用高速缓存：有引用关系的对象会被放到一起</li>
+</ol>
+<h3 id="缺点-3">缺点</h3>
+<ol>
+<li>堆使用效率低下：二等分了堆，导致安排对象的空间只有一半</li>
+<li>不兼容保守式GC：需要对对象移动位置</li>
+<li>递归调用函数</li>
+</ol>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[稳定性]]></title>
+        <id>https://esencool.github.io/post/wen-ding-xing/</id>
+        <link href="https://esencool.github.io/post/wen-ding-xing/">
+        </link>
+        <updated>2024-02-09T03:27:59.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="spring-框架">Spring 框架</h1>
+<h2 id="重试">重试</h2>
+<p><a href="https://www.baeldung.com/spring-retry">Baeldung Guide—— Spring Retry</a><br>
+Spring boot 比较友好的重试组件：spring-retry<br>
+提供了两种使用方式，分别为通过AOP和指令式声明。</p>
+<pre><code>// 在请求发生链接异常，客户端异常时进行重试
+@Retryable(value = {ConnectException.class, FeignException.class}, maxAttempts = 4,
+        backoff = @Backoff(delay = 5000, maxDelay = 80000, multiplier = 4))
+</code></pre>
+<h2 id="降级">降级</h2>
+<p><a href="https://www.baeldung.com/spring-cloud-netflix-hystrix">Baeldung Guide——spring_boot_hystrix</a></p>
+<h2 id="限流">限流</h2>
+<h1 id="resilience4j">Resilience4j</h1>
+<p>Guide：https://resilience4j.readme.io/docs/getting-started<br>
+Resilience4j 是一个专为函数式编程设计的轻量级容错库，对lambda表达式友好，能清晰简洁地书写出稳定性的代码。提供了以下几个组件：</p>
+<h2 id="circuitbreaker-断路器">CircuitBreaker 断路器</h2>
+<p>本意是一个电气安全装置，可以手动开启关闭回路，也会自动断开回路，用于保护设备，防止火灾风险。别名有空气开关，保险开关等。<br>
+作为微服务间的断路器，通常作用在微服务调用间。<br>
+当与其他服务通信出现较多异常，是否需要直接抛出错误，而不再进行通信，减少下游压力。<br>
+<img src="https://cdn.nlark.com/yuque/0/2024/png/43081260/1710989643007-c1fc887e-6aca-420e-8abd-289fc7724025.png#averageHue=%23afc2e1&amp;clientId=u49c1f552-6e06-4&amp;from=paste&amp;id=u59ce0728&amp;originHeight=528&amp;originWidth=428&amp;originalType=url&amp;ratio=1&amp;rotation=0&amp;showTitle=false&amp;status=done&amp;style=none&amp;taskId=u6061b3c4-2deb-44b6-8477-7ccc0f0cba1&amp;title=" alt="" loading="lazy"></p>
+<h3 id="介绍">介绍</h3>
+<p>类比过后断路器的状态以及对应的变更策略就十分容易理解了</p>
+<ol>
+<li>当状态为CLOSED的时候，方法调用正常进行</li>
+<li>当状态为OPEN的时候，不进行方法调用，直接返回异常</li>
+<li>当状态为HALF_OPEN的时候，会允许配置值的方法继续执行来判断是否仍不可用，或已恢复可用。</li>
+</ol>
+<p>暂时无法在飞书文档外展示此内容</p>
+<h3 id="窗口策略">窗口策略</h3>
+<ol>
+<li>基于计数的滑动窗口 （count based）</li>
+</ol>
+<p>维护了一个计数的循环数组，在变更时增量更新聚合信息。因此能达到$$O(1$$的检索时间复杂度，$$O(n$$的空间复杂度。</p>
+<ol>
+<li>基于时间的滑动窗口 （time based）</li>
+</ol>
+<p>维护了N个聚合的循环数组，在时间窗口经过时，从旧的聚合中减去聚合部份并重置对应的聚合数组，在变更时增量更新信息。</p>
+<h2 id="缓存">缓存</h2>
+<p>内存缓存 Caffine <a href="https://bytedance.larkoffice.com/docx/GVPmdfX6joL2ldx4WS2cUKbVnMb">内存缓存 Caffine底层实现</a><br>
+缓存通常分为几类接口</p>
+]]></content>
+    </entry>
+</feed>
